@@ -1,3 +1,4 @@
+import {translator,type Message} from "../src/i18n";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -273,3 +274,5 @@ test("unbalanced statement equations cannot publish", () => {
     "Snapshot date,Closing balance,Account,Currency,Account class\n2026-05-01,99,A,MYR,asset\n2026-05-01,50,L,MYR,liability\n2026-05-01,50,E,MYR,equity";
   assert.throws(() => compile(pick(bs, "position"), "MYR"), /Assets/);
 });
+test("every field rendered by a recipe has an English and Chinese caption",()=>{for(const id of businessIds)for(const label of Object.values(fieldSpec(id))){assert.ok(translator("en")(label));assert.notEqual(translator("zh-CN")(label),label);}assert.equal(translator("zh-CN")("Future label" as Message),"Future label");});
+

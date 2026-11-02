@@ -1,3 +1,4 @@
+import {DialogGuard} from "./DialogGuard";
 import {
   business,
   businessIds,
@@ -714,6 +715,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
         }
         onResultDrop={(value) => void run(() => put(value))}
       />
+      {modal && <DialogGuard key={modal+selection} close={()=>setModal("")} language={language} render={()=> <>
       {modal === "matches" && (
         <Modal title={t("Choose a report")} onClose={() => setModal("")}>
           <label className="sheet">
@@ -965,6 +967,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
           </p>
         </Modal>
       )}
+    </>}/>}
     </div>
   );
 }

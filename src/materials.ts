@@ -272,7 +272,7 @@ export function layout(table: Table, use: Use): Layout {
   return { use, columns: saved, ...options };
 }
 export function fieldLabel(use: Use, key: keyof Columns): Message {
-  if (isBusiness(use)) return (fieldSpec(use)[key] ?? colNames[key]) as Message;
+  if (isBusiness(use)) return fieldSpec(use)[key] ?? colNames[key];
   if (key === "amount" && (use === "cashflow" || use === "bank"))
     return "Signed amount";
   if (key === "amount" && use === "settlement") return "Net payout";

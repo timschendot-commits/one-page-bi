@@ -1,6 +1,9 @@
 export type Language = "en" | "zh-CN";
 
 const chinese = {
+  Currency: "币种",
+  "Back to workbench":"返回工作台",
+  "This panel could not be displayed. Your files are still on the grid.":"这个窗口未能显示，文件仍保留在合成台上。",
  "Identical to source row":"与原数据行完全相同","Conflicting column meanings":"字段重名","Summary or balance row":"合计或余额行","Blank":"空白","Numeric-looking text":"数字外观","Text":"文本",
   "Trial balance roll-forward": "试算平衡与余额勾稽",
   "Account opening, movement and closing balances":
@@ -654,7 +657,7 @@ export function translator(language: Language) {
     key: Message,
     values: Record<string, string | number> = {},
   ): string => {
-    const text = language === "en" ? key : chinese[key];
+    const text = language === "zh-CN" && Object.hasOwn(chinese,key) ? chinese[key] : key;
     return text.replace(/\{(\w+)\}/g, (match, name: string) =>
       String(values[name] ?? match),
     );

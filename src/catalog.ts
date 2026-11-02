@@ -1,3 +1,4 @@
+import type {Message} from "./i18n";
 export const business = {
   purchase: {
     title: "Purchasing by supplier",
@@ -132,8 +133,8 @@ export const extraRecipes = byKind(
       },
     }) as const,
 );
-export function fieldSpec(id: Business): Record<string, string> {
-  const spec: Record<string, string> = {
+export function fieldSpec(id: Business): Record<string, Message> {
+  const spec: Record<string, Message> = {
     date: "Date",
     amount: business[id].amount,
     category: business[id].dimension,
