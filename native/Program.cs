@@ -18,7 +18,13 @@ namespace OnePageBI {
     internal Workbench(string alternate){
       store=new Store(alternate);
       profile=Path.Combine(alternate??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"One Page BI"),"WebView2");
-      Text="One Page BI   ·   报表合成台";Size=new Size(1390,920);MinimumSize=new Size(820,600);
+      Text="One Page BI   ·   报表合成台";
+      using(var graphics=CreateGraphics()){
+        float scale=graphics.DpiX/96f;
+        var area=Screen.FromControl(this).WorkingArea;
+        Size=new Size(Math.Min(area.Width,(int)(1390*scale)),Math.Min(area.Height,(int)(920*scale)));
+        MinimumSize=new Size(Math.Min(area.Width,(int)(730*scale)),Math.Min(area.Height,(int)(560*scale)));
+      }
       StartPosition=FormStartPosition.CenterScreen;Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);view.Dock=DockStyle.Fill;Controls.Add(view);
       Shown+=async (sender,e)=>{try{await Start();}catch(Exception ex){MessageBox.Show("启动失败，请检查 Microsoft Edge WebView2 Runtime。\n"+ex.Message,Text);Close();}};
     }
@@ -34,15 +40,20 @@ namespace OnePageBI {
       core.NavigationStarting+=(s,e)=>{if(e.Uri!=StartUrl)e.Cancel=true;};
       core.WebMessageReceived+=(s,e)=>{
         if(e.Source!=StartUrl)return;
-        string id="";
-        try{
-          var d=store.Json.Deserialize<Dictionary<string,object>>(e.WebMessageAsJson);
-          id=(string)d["id"];
-          object result=Dispatch((string)d["method"],d);
-          core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=true,result=result}));
-        }catch(Exception ex){core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=false,error=ex.Message}));}
+        string message=e.WebMessageAsJson;
+        // Native pickers run a message loop. Leave the WebView2 callback first.
+        BeginInvoke(new Action(()=>Reply(core,message)));
       };
       core.Navigate(StartUrl);
+    }
+    void Reply(CoreWebView2 core,string message){
+      string id="";
+      try{
+        var d=store.Json.Deserialize<Dictionary<string,object>>(message);
+        id=(string)d["id"];
+        object result=Dispatch((string)d["method"],d);
+        core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=true,result=result}));
+      }catch(Exception ex){core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=false,error=ex.Message}));}
     }
     object Dispatch(string method,Dictionary<string,object> d){
       switch(method){
@@ -67,7 +78,11 @@ namespace OnePageBI {
           var png=store.ItemPath((string)d["archiveId"],@"exports\report.png");
           using(var dlg=new SaveFileDialog {Filter="PNG 图像|*.png",FileName="销售分析.png",DefaultExt="png",AddExtension=true}){
             if(dlg.ShowDialog(this)!=DialogResult.OK)return false;
-            if(!String.Equals(Path.GetFullPath(dlg.FileName),Path.GetFullPath(png),StringComparison.OrdinalIgnoreCase)) File.Copy(png,dlg.FileName,true);
+            string target=Path.GetFullPath(dlg.FileName);
+            if(String.Equals(target,Path.GetFullPath(png),StringComparison.OrdinalIgnoreCase))return true;
+            if(!Path.GetExtension(target).Equals(".png",StringComparison.OrdinalIgnoreCase))throw new IOException("请使用 .png 扩展名。");
+            if(target.StartsWith(Path.GetFullPath(store.Reports)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("请选择档案库以外的位置，以保留历史原件。");
+            File.Copy(png,target,true);
           }return true;
         default:throw new InvalidOperationException("未知操作。");
       }
