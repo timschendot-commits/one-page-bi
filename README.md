@@ -1,61 +1,46 @@
-# One Page BI V0.3.0 · Local milestone
+# One Page BI V0.4.0 · Local Windows milestone
 
 English · [简体中文](README.zh-CN.md)
 
-One Page BI is a local Windows workbench for turning CSV and XLSX data into an interactive one-page dashboard. It opens in English. Select **中文** in the top-right corner to switch to Simplified Chinese, or **English** to switch back. The workbench remembers your choice.
+Drop the files you have onto the nine-slot workbench. One Page BI inspects their columns and offers sales, order, cash flow and payout reports that they could support. Choosing a template first is optional. The app starts in English. **中文** and **English** switch languages and preserve the current session.
 
-## Run the portable app
+## Start and try the joined-order example
 
-1. Use the local **OnePageBI-V0.3.0-local-Windows-x64.zip** package. Extract the whole folder and run **OnePageBI.exe**. Keep the DLLs, `ui` and `examples` with it. Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) are required.
-2. The inventory starts at your Desktop and lists CSV, XLSX and marked report files. To try the bundled sample, select **Examples** in the inventory location menu. Drag **Sales-demo.csv** onto the grid or click its slot.
-3. Confirm the column mapping. Sales date and line amount are required. Order ID, category and currency are optional. Check the sample values, then select **Confirm and validate**.
-4. Click **Craft** in the output slot. Open the finished report to filter by month and category or export the current view as a PNG.
+1. Extract **OnePageBI-V0.4.0-local-Windows-x64.zip** and run **OnePageBI.exe**. Keep its DLLs, `ui`, `licenses` and `examples` together. Requires Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+2. The square inventory opens on your Desktop. Choose **Examples** from its location menu. Hold Ctrl and select **Order-headers-demo.csv**, **Order-items-demo.tsv**, **Payouts-demo.csv** and **Bank-demo.csv**. Drag the group to the grid, or choose **Add selected**. You can also drop files from Explorer, click an empty slot to browse, or click an inventory data file to load it.
+3. The right side lists possible report types, even if you previously chose a different template. Select **Order analysis**. Check which source supplies each field, then select **MYR** and **Confirm and validate**. Only the two order files participate. Unused materials stay on the grid for the next recipe.
+4. Click **Craft** in the output slot. The synthetic example gives **MYR 125.00**, **2** orders and **MYR 62.50** average order value. Open the interactive report, filter it, or export a PNG. Drag the finished item into the inventory (or choose **To inventory**) for a standalone Desktop copy. Choose **Change selection** to use the same materials again.
 
-The example should give **CNY 3,393.00** in net sales, **10** distinct orders, **CNY 339.30** average order value and **12** sales lines. February totals **CNY 1,058.00**, including a return of CNY 120.00.
+## What each report can use
 
-## Check a platform payout against a bank statement
+| Report | Supported materials and rules |
+| --- | --- |
+| Sales overview | A date and a signed final line amount. When no final amount is available, confirm whole quantity × nonnegative unit price less an explicit absolute line discount. Order ID and category are optional. Missing order IDs are never estimated. |
+| Order analysis | Sales lines with a globally unique order ID. A separate order header can supply the date if each header ID is unique and the complete ID sets agree. Several items may belong to one order. IDs should be stored as text to preserve leading zeroes. |
+| Multiple sales periods | Two to nine periods with disjoint date ranges and a common currency. Confirm the files describe the same business and sales definition. For overlapping alternatives the app can offer compatible pairs. An order ID reused across periods stops generation. |
+| Cash flow | Posted date and signed cash amount, or separate nonnegative debit and credit columns. A row cannot have a nonzero amount on both sides. The report shows receipts, payments and net movement. |
+| Payout check | Platform net settlements and posted bank transactions in one currency. Confirmation requires a unique exact reference and cent amount, and a positive bank credit within 0–7 calendar days from settlement. Duplicates, missing references, reversals, date exceptions and differences stay visible for review. Open the report to inspect the source rows and export filtered exceptions as CSV. |
 
-Select **Payouts** in the original workbench template list. The two middle slots accept the **platform settlement batch file** and **posted bank transactions**. Drag either file from the inventory to its slot. Click a filled slot to review columns or replace the file. Use one net transfer per platform batch (after fees and adjustments). The bank can use a signed amount or separate debit and credit columns. Choose the common currency in the mapping dialog. For short dates, explicitly enable DD/MM/YYYY if appropriate. Each subsequent file with the same headers can reuse its confirmed mapping by column name, even when the order changes.
+Mapping explains an input column. It uses no material slot. A date and a generic “Amount” could represent either sales or cash. Review the business meaning before choosing one. **Rows checked** means the proposed mapping passed row checks. **Review meaning** asks for a business decision or a currency choice. **Needs correction** identifies a blocking validation error. Every selection is validated in full before crafting. Net sales uses signed integer cents, orders counts distinct IDs in the current filters, and average order value divides those sales by that count. A missing mapping leaves optional metrics unavailable.
 
-Click the output slot to run the check and archive both input snapshots. The workbench keeps the square crafting grid, inventory and preview. **See exceptions** opens the offline report. Filter by status or search a reference, expand a case to see each filename, worksheet, source row, date and signed amount, or export the entire filtered list to CSV. The difference is bank minus expected. **PNG** is a summary without row-level information. The **HTML** and exception CSV contain transaction details. You can drag the finished report to the inventory to keep a desktop copy.
+## Unfamiliar files and limits
 
-An automatic match requires one settlement and one positive bank credit with the same exact reference, currency and cent amount, posted from settlement day through seven calendar days later. Reference comparisons are case-sensitive. The optional bank description mode looks for complete known codes separated by whitespace, commas, semicolons or pipes. The seven-day window is a review policy, not a settlement guarantee. Duplicates, reversals, conflicting codes, earlier/later dates and amount discrepancies stay out of confirmed receipts. Equal amounts can only be suggested for review. Pending settlements are checked against the supplied period; unlinked bank entries can be unrelated activity. This version does not automatically split or combine transfers, convert currency or decide whether a merchant lost money.
+- Click a material to choose its worksheet, header row (1–50), business meaning and column names. Sample values are shown beside the mapping. A workbook can provide more than one participating worksheet. The first six visible sheets are inspected automatically and additional sheets can be selected in the editor.
+- The inventory lists UTF-8 comma-delimited CSV, tab-separated TSV, XLSX and marked `.onepagebi.html` files. An external standalone One Page BI report can supply its embedded transaction data. Dropping that report reads its data section only. Clicking it in the inventory opens it in the browser.
+- The pool holds nine files and skips byte-identical copies. A data file can be up to 5 MiB, a marked report up to 16 MiB. Data tables support up to 10,000 rows and 80 columns. Workbook ZIP limits are 32 MiB unpacked and 2,000 entries. Use nonempty, unique column names and remove subtotal, balance and footer rows. Export formulas as values. Dates support YYYY-MM-DD, YYYY/MM/DD and supported Excel serial dates. Explicitly enable DD/MM/YYYY for that convention.
+- For order joins, use a complete set of order headers and matching lines. For derived amounts, provide the final line amount when tax, shipping, percentage discounts, or refund treatment cannot be determined by the supported formula. Input units must agree. Currency conversion, arbitrary table joins, PDF/image extraction, profit/forecasting and Power BI PBIP/PBIX export are outside this milestone.
 
-Use **Examples** with this template for two synthetic files. Select **MYR**. Of MYR 343.00 in positive payouts, MYR 120.00 is confirmed. DEMO-102 has a MYR 90.00 payout and an MYR 88.00 bank credit, a difference of −2.00. Four payout cases need attention, and two bank lines are unlinked. These are generic mapping examples, not certified Grab or bank formats.
+Many merchant exports mix order-level amounts and product rows. Shopify documents this layout and records refunded amounts at order level. When using these exports, supply verified final line amounts or a single verified net row per order. The app blocks repeated order totals and unallocated refunds in derived sales. [Shopify order export fields](https://help.shopify.com/en/manual/fulfillment/managing-orders/exporting-orders)
 
-## Craft a desktop report
+## History, exports and local storage
 
-After crafting, drag the finished item from the output slot to any part of the inventory, or select **To inventory**. The app writes the archived standalone HTML to your actual Windows Desktop, switches the inventory to Desktop and shows the saved item. Click the BI item to open the file in the default browser. The desktop file still works when copied elsewhere.
+Each successful craft creates a folder in Windows Documents under `One Page BI/Reports/<id>/`. **History** reopens the standalone report, exports its original PNG or opens the archive folder. Archives contain the original bytes of the selected materials in `inputs/`, validated data in `data/processed.json`, interactive `dashboard/report.html`, `exports/report.png` (1800 × 1134), `template.json` with the mapping, worksheet and calculation rules, and `metadata.json` with source names and SHA-256 hashes. Multi-period data includes a per-row source index. Joined rows retain the item and header row numbers. Earlier reports stay available in history.
 
-Generated names follow `BI-<recipe>-<source>-<short-id>.onepagebi.html`. The inventory recognizes any nonempty name ending in **.onepagebi.html**, ignoring case. Regular HTML, shortcuts and unrelated files stay out of the grid. The current folder is watched for additions, removals and renames. A repeat drop reuses an identical file. A conflicting or edited copy receives a numbered sibling.
+The desktop copy is named `BI-<recipe>-<source>-<id>.onepagebi.html`. Repeated drops reuse an identical file. An edited copy is preserved under its current name and the new copy gets a numbered name. Standalone reports work offline and include transaction details. Their PNG button exports the current view and language. New reports have their own English/Chinese toggle.
 
-| Recipe | Input | Output |
-| --- | --- | --- |
-| Sales | Date and signed line amount. Order ID and category are optional. | Net sales, orders, average order value and sales lines. |
-| Order analysis | Date, line amount and order ID. Preserve leading zeroes in text IDs. | Distinct orders, average value, multi-line orders, monthly order counts and largest orders. IDs are grouped within the selected rows. An order can appear in more than one month. |
-| Cash flow | Posted date and signed transaction amount. Receipts are positive and payments negative. | Cash in, cash out (positive magnitude), net movement, transaction count and spending by category. The example has CNY 1,400.25 in, 465.25 out and a net increase of 935.00. |
+## Build and test
 
-Changing recipes keeps the input available and requires checking its mapping again. The cash ledger accepts a signed amount or separate nonnegative debit and credit columns. A row can have only one nonzero side. Short order ID headers are rejected for order counting. Use a globally unique order ID. Provide posted transactions in one currency, with no opening-balance or subtotal rows.
-
-## Language and exports
-
-Switching languages preserves the loaded file, field mapping and report values. Input filenames, column names and categories are displayed as supplied. Built-in examples are available in both languages. New standalone HTML reports open in the language used to craft them and have their own offline language button. Changing the report language retains its filters. PNG export uses the current preview or report language. History exports the original archived PNG. Existing V0.1.0 archives open as originally generated.
-
-## Input and calculations
-
-- Use one table and one currency per report. Each nonempty row is a line item. Remove subtotals, totals and explanatory rows before import. Every mapped line must pass validation.
-- Use a UTF-8, comma-delimited CSV (BOM and quoted multiline fields supported) or select one visible XLSX worksheet. Headers must be nonempty and unique. Use YYYY-MM-DD, YYYY/MM/DD or supported Excel date serials. Convert formulas to values and unmerge cells first.
-- Maximum file size is 5 MiB, with up to 10,000 data rows and 80 columns. XLSX archives are limited to 32 MiB unpacked and 2,000 entries.
-- Net sales sums signed line amounts, including returns, in integer cents. Amounts have at most two decimal places. Orders counts distinct IDs within the active filters. Average order value is filtered net sales divided by distinct orders, rounded to cents. Missing order mapping leaves order metrics blank. Blank IDs in a mapped order column stop validation.
-- Charts show up to six recorded months and up to six ranked categories or orders, depending on the recipe. KPIs cover all filtered rows. PNGs are 1800 × 1134 pixels. Profit analysis, forecasting, joins, currency conversion and Power BI PBIP/PBIX export are outside this version.
-
-## History and archives
-
-Open **History** to reopen a report, export its original PNG or open its folder. Each successful run creates a separate directory under the Windows Documents folder at `One Page BI/Reports/<id>/`. It contains the original input bytes in `inputs/`, validated rows in `data/processed.json`, a standalone `dashboard/report.html`, `exports/report.png`, `template.json` and `metadata.json`. The metadata includes the input SHA-256, sheet, row count and software version. A run only enters history after its archive is complete. The HTML includes the mapped transaction data and can be opened offline without the desktop app.
-
-## Build and test on Windows
-
-The desktop host uses WinForms and WebView2. The UI uses React and TypeScript, with SheetJS CE and csv-parse for input. Tested on Windows 11 x64 with Node 24 and pnpm 11. From the repository root, run:
+The native host uses WinForms and WebView2. The UI uses React and TypeScript, SheetJS CE and csv-parse. The local build uses Node 24 and pnpm 11. Run these commands from the repository root on Windows:
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -66,4 +51,4 @@ pnpm build:windows
 .\release\OnePageBI.exe
 ```
 
-The first build downloads the pinned WebView2 SDK and checks its SHA-256. To run the desktop end-to-end tests on an interactive Windows desktop with Edge, use `pnpm test:windows`. The tests use an isolated profile and archive directory. Set `ONEPAGEBI_RELEASE` to test a different extracted release and `ONEPAGEBI_TEST_DIR` to choose a test output location.
+The first native build downloads the pinned WebView2 SDK and verifies its SHA-256. With an interactive Windows desktop and Edge available, run `pnpm test:windows`. Set `ONEPAGEBI_RELEASE` to an extracted portable folder to test that exact package. Set `ONEPAGEBI_TEST_DIR` to store the isolated test profile and screenshots outside the repository.

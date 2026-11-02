@@ -1,3 +1,12 @@
+import {
+  inspect as inspectMaterial,
+  matches,
+  compile,
+  preflight,
+  getSheet,
+  layout as mapLayout,
+  isSales,
+} from "../src/materials";
 import { payoutSuggest, preparePayout } from "../src/payout-input";
 import { reconcile, payoutTotals, type PayoutLine } from "../src/payout-model";
 import { cashMetrics, orderMetrics, dashboard } from "../src/recipes";
@@ -382,4 +391,133 @@ test("payout parsing requires currency confirmation; DMY dates require explicit 
       ),
     /Gross/,
   );
+});
+const mat = (name: string, data: string, hash = name) =>
+  inspectMaterial(name, name, hash, new TextEncoder().encode(data));
+const h = mat(
+    "unrelated-a.csv",
+    "Order ID,Order date,Currency\n01,2026-02-01,MYR\n02,2026-02-03,MYR",
+  ),
+  l = mat(
+    "unrelated-b.tsv",
+    "Order ID\tQty\tUnit price\tLine discount amount\n01\t2\t30.50\t1.00\n01\t1\t40.00\t0\n02\t3\t10.00\t5.00",
+  );
+test("material roles depend on content, join complete order sets, archive row provenance", () => {
+  const unrelated = mat(
+    "sales.csv",
+    "Booking date,Debit,Credit,Reference\n2026-01-01,10,0,A",
+  );
+  const options = matches([l, unrelated, h]);
+  const c = options.find((x) => x.kind === "orders")!;
+  assert.deepEqual(
+    c.parts.map((p) => p.material.name),
+    [l.name, h.name],
+  );
+  const result = compile(c, "Source units");
+  assert.ok(isSales(result));
+  assert.deepEqual(
+    result.rows.map((r) => r.cents),
+    [6000, 4000, 2500],
+  );
+  assert.equal(metrics(result.rows, true).count, 2);
+  assert.equal((result.rows[2] as { headerRow?: number }).headerRow, 3);
+  assert.ok(
+    options.some(
+      (x) => x.kind === "cashflow" && x.parts[0].material.name === "sales.csv",
+    ),
+  );
+});
+test("duplicate headers, orphan lines and incompatible order sets do not suggest joins", () => {
+  for (const data of [
+    "01,2026-01-01\n01,2026-01-01",
+    "01,2026-01-01",
+    "01,2026-01-01\n02,2026-01-01\n03,2026-01-01",
+  ]) {
+    const bad = mat("a.csv", "Order ID,Date\n" + data);
+    assert.equal(
+      matches([l, bad]).filter((c) => c.parts.length === 2).length,
+      0,
+    );
+  }
+});
+test("unnamed business amount needs an explicit interpretation; unrelated costs are not sales", () => {
+  const generic = mat("income.csv", "Date,Amount\n2026-01-01,100");
+  const opts = matches([generic]);
+  assert.deepEqual(opts.map((c) => c.kind).sort(), ["cashflow", "sales"]);
+  assert.ok(opts.every((c) => c.review));
+  assert.deepEqual(
+    matches([mat("Sales-demo.csv", "Product,Stock on hand\nA,4")]),
+    [],
+  );
+});
+test("merge disjoint sales periods in cents; overlapping or mixed currencies are never proposed together", () => {
+  const sale = (n: string, date: string, currency: string) =>
+    mat(n, "Sales date,Sales amount,Currency\n" + date + ",1.11," + currency);
+  const a = sale("p.csv", "2026-01-01", "MYR"),
+    b = sale("q.csv", "2026-02-01", "MYR");
+  const c = matches([b, a]).find((o) => o.periods)!;
+  assert.ok(c);
+  assert.throws(() => compile(c, "Source units"), /currency/);
+  const r = compile(c, "MYR");
+  assert.ok(isSales(r));
+  assert.equal(
+    r.rows.reduce((n, r) => n + r.cents, 0),
+    222,
+  );
+  const extra = sale("overlap.csv", "2026-01-01", "MYR");
+  assert.equal(matches([a, b, extra]).filter((x) => x.periods).length, 2);
+  assert.equal(
+    matches([a, sale("z.csv", "2026-01-01", "MYR")]).some((x) => x.periods),
+    false,
+  );
+  assert.equal(
+    matches([a, sale("usd.csv", "2026-02-01", "USD")]).some((x) => x.periods),
+    false,
+  );
+});
+test("manual header row, custom fields, and a saved report as mapped data", () => {
+  const a = mat("m.csv", "Monthly summary\nWhen,Value\n2026-02-01,123.45");
+  const v = getSheet(a.source!, "CSV", 2),
+    manual = mapLayout(v.table!, "sales");
+  manual.columns.date = 0;
+  manual.columns.amount = 1;
+  a.views = [{ ...v, manual }];
+  const c = matches([a])[0];
+  const r = compile(c, "MYR");
+  assert.ok(isSales(r));
+  assert.equal(r.rows[0].row, 3);
+  const html =
+    '<script type="application/json" id="dataset">' +
+    JSON.stringify(r) +
+    '</script><script>throw new Error("must not run")</script>';
+  const imported = mat("new.onepagebi.html", html);
+  const again = compile(matches([imported])[0], "MYR");
+  assert.ok(isSales(again));
+  assert.equal(again.rows[0].cents, 12345);
+  assert.ok(mat("wrong.onepagebi.html", "<html>No rows</html>").error);
+});
+test("unhandled tax blocks derived figures and invalid data is not marked ready", () => {
+  const a = mat("s.csv", "Date,Qty,Unit price,Tax\n2026-01-01,2,5,0.50");
+  const c = matches([a]).find((x) => x.kind === "sales")!;
+  assert.equal(preflight(c).state, "blocked");
+  assert.throws(() => compile(c, "MYR"), /tax/i);
+});
+test("order-level totals and refunds cannot silently inflate multi-line sales", () => {
+  const orderTotals = mat(
+    "multi.csv",
+    "Date,Order ID,Order total\n2026-01-01,A,100\n2026-01-01,A,100",
+  );
+  const v = orderTotals.views[0];
+  v.manual = mapLayout(v.table!, "sales");
+  v.manual.columns.amount = 2;
+  assert.throws(
+    () => compile(matches([orderTotals])[0], "MYR"),
+    /one row per unique order/,
+  );
+  const headers = mat(
+    "heads.csv",
+    "Order ID,Order date,Refunded Amount\n01,2026-01-01,30.00\n02,2026-01-02,0",
+  );
+  const paired = matches([l, headers]).find((c) => c.kind === "orders")!;
+  assert.throws(() => compile(paired, "MYR"), /refund/);
 });

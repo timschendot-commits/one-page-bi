@@ -1,6 +1,113 @@
 export type Language = "en" | "zh-CN";
 
 const chinese = {
+  "Needs correction": "需修正数据",
+  "Rows checked": "已检查数据行",
+  "Review meaning": "待确认口径",
+  "Derived line value: whole quantity × unit price − absolute line discount. Confirm the tax and return treatment.":
+    "行金额 = 整数数量 × 单价 − 该行折扣金额。请确认税费和退货口径。",
+  "Export transaction rows as CSV, TSV or XLSX. Images, PDFs and general HTML cannot supply verified rows.":
+    "请导出 CSV、TSV 或 XLSX 明细。图片、PDF 和普通网页不能作为已核实的交易行。",
+  "Confirm a common currency before combining periods.":
+    "合并多期资料前，请确认所有材料使用同一币种。",
+  "An order ID repeats across periods. Confirm its identity in the source first.":
+    "跨期出现相同订单号，需先核对订单是否属于同一笔业务。",
+  "Overlapping periods cannot be added together automatically.":
+    "日期范围重叠，不能自动相加。",
+  "Combined data exceeds the row or precision limit.":
+    "合并后的明细超过行数或金额精度上限。",
+  "Combine the selected disjoint periods using one currency.":
+    "将这些日期不重叠的明细按同一币种合并，保留各行来源。",
+  "Add selected ({count})": "放入所选（{count}）",
+  "Nine slots are full. Remove an item before adding more.":
+    "九个材料格已满。请先移出不需要的材料。",
+  "This looks like an order header. Add order items with the same order IDs.":
+    "这像订单主表。请补充订单号范围一致、含行金额或数量与单价的订单明细。",
+  "These look like order items. Add a header with one date per unique order ID.":
+    "这像订单行明细。请补充含日期、订单号唯一的订单主表。",
+  "This looks like a settlement file. Add bank transactions with a reference.":
+    "这像平台结算单。补充含参考信息的银行流水即可匹配到账核对。",
+  "This looks like a bank statement. Add platform net payouts to check receipts.":
+    "这像银行流水。补充平台净打款数据可核对到账。",
+  "Choose a business meaning and map custom headers below.":
+    "可在下面指定业务用途，再映射你自己的列名。",
+  "Choose the final line value, or clear it to use quantity × unit price less line discount.":
+    "有最终行金额时优先使用它；清空该映射才会用数量 × 单价减行折扣金额。",
+  "Duplicate or missing order IDs prevent a safe join. Check both order sets.":
+    "订单号重复或缺失会阻止可靠关联，请核对两侧订单范围。",
+  "Order headers": "订单主表",
+  "Order items": "订单行明细",
+  Quantity: "数量",
+  "Unit price": "单价",
+  "Line discount amount": "行折扣额",
+  "No reusable One Page BI dataset was found in this report.":
+    "此报表没有可复用的 One Page BI 明细数据。",
+  "Unsupported or incomplete embedded report data.":
+    "报表中嵌入的明细不完整或格式不受支持。",
+  "Map a line amount or both quantity and unit price.":
+    "请映射行金额，或同时映射数量和单价。",
+  "Derived amounts require whole quantities and nonnegative unit prices.":
+    "换算行金额需要整数数量和非负单价。",
+  "Invalid line discount or derived amount.": "行折扣额或换算后的金额无效。",
+  "Unallocated tax, shipping, fees, discounts or refunds: provide the final line amount.":
+    "存在尚未分摊的税费、运费、手续费、折扣或退款，请提供已核实的最终行金额。",
+  "An order total needs one row per unique order ID. Use final line values for multi-item orders.":
+    "使用整单金额时，每个订单号必须唯一且只有一行。多件商品分行时请使用最终行金额。",
+  "This export mixes order totals and product lines. Supply final line values, or one verified net row per order, including refunds.":
+    "这张表同时含整单金额和商品行。请提供最终行金额，或每单一行并已计入退款的净额。",
+  "Order headers must contain exactly one row per nonblank order ID.":
+    "主表每个订单号必须非空且唯一。",
+  "An order item has no matching order header.":
+    "这条订单明细在主表中找不到对应的订单号。",
+  "Currency is missing or conflicts across joined rows.":
+    "两表关联行币种缺失或不一致。",
+  "Some order headers have no items. Align the order sets before joining.":
+    "部分主表订单没有对应明细，请先对齐两份材料的订单范围。",
+  "Header row": "表头行",
+  "Material meaning": "材料用途",
+  "Detect from columns": "自动识别",
+  "The first six sheets were inspected. Select another sheet here to include it.":
+    "自动检查前六个工作表，也可在此选择其他工作表加入识别。",
+  "Remove from grid": "移出合成台",
+  "Apply to material": "应用到材料",
+  "Date and net line value, or order headers plus matching order items.":
+    "交易日期和行金额可来自一张明细表，也可由订单主表与订单行按订单号关联。",
+  "Sales lines plus globally unique order IDs.":
+    "销售明细需包含全局唯一的订单编号。",
+  "Transaction date and signed cash, or debit and credit.":
+    "需要交易日期与带符号的收付款金额，或借贷两列。",
+  "Platform net payouts and bank transactions with a settlement reference.":
+    "需要平台净打款和银行流水，两侧均须有结算参考信息。",
+  "Export a detailed CSV or XLSX. Only marked One Page BI HTML with embedded rows can be reused.":
+    "请导出含明细的 CSV 或 XLSX。HTML 只支持有标记且包含明细的 One Page BI 报表。",
+  "This material exceeds the file size limit.": "材料超过文件大小上限。",
+  "An identical file is already on the grid.":
+    "这份材料已在合成台上，相同内容只放一次。",
+  "Other report types can still match the materials on the grid.":
+    "可以继续放材料；其他能合成的报表也会出现。",
+  "Add materials": "添加材料",
+  "Add to slot {n}": "向第 {n} 格添加材料",
+  "Add files": "放入材料",
+  "Choose a report": "选择要合成的报表",
+  "Choose report": "选报表",
+  "Bright slots are used in this report.": "亮色格子里的材料将用于当前报表。",
+  "Click a material to review its columns.": "点击材料可查看表头、用途和字段。",
+  "Drop files here. A template is optional.": "先把材料放进来，可以不选模板。",
+  "Change selection": "取消选择",
+  "Matching reports": "可匹配的报表",
+  "Based on columns. Confirm meaning and validate all rows before crafting.":
+    "按字段匹配；确认口径并通过逐行校验后即可合成。",
+  "No complete combination yet": "材料暂未凑齐",
+  "Click a material to set its header row and column meanings, or add the missing data.":
+    "点击材料指定表头行和字段含义，也可补充缺少的数据。",
+  "Other combinations": "其他可选组合",
+  "Report type": "报表类型",
+  "All report types": "全部报表类型",
+  "Confirm the business meaning of this amount.":
+    "金额用途不明确，请确认它是销售金额还是收付款。",
+  "Drop up to nine materials. Only selected inputs are archived.":
+    "最多放入九份材料。归档只收录本次选择的输入。",
+  "Automatic matching": "自动匹配",
   Payouts: "到账核对",
   "Payout file": "平台账单",
   "Bank file": "银行流水",
@@ -164,6 +271,9 @@ const chinese = {
   "Number of posted transaction lines in the active filters.":
     "当前筛选内的实际流水笔数。",
   "Transaction date": "交易日期",
+  "Confirm these periods cover the same business and use the same sales definition.":
+    "请确认这些期间属于同一业务，并且销售额计算口径一致。",
+  "Net payout": "平台净打款金额",
   "Signed amount": "收支金额（带正负号）",
   "Multi-line orders": "多行订单数",
   "Orders by month": "月度订单数",

@@ -11,17 +11,26 @@ interface Props {
   revealName: string;
   onFolder: (method: string) => void;
   onLoad: (name: string) => void;
+  usedNames?: ReadonlySet<string>;
+  onBatch?: (names: string[]) => void;
 }
 const pageSize = 18;
 export function InventoryPanel({
   inventory,
   onFolder,
   onLoad,
+  onBatch,
+  usedNames,
   onReport,
   onResultDrop,
   revealName,
 }: Props) {
   const { t } = useLanguage();
+  const [picked, setPicked] = useState<string[]>([]),
+    [anchor, setAnchor] = useState("");
+  const selected = picked.filter((name) =>
+    inventory.files.some((f) => f.name === name),
+  );
   const [over, setOver] = useState(false);
   const [page, setPage] = useState(() =>
       Math.max(
@@ -115,9 +124,18 @@ export function InventoryPanel({
           return (
             <button
               key={i}
-              className={"tile filetile" + (isReport ? " report-item" : "")}
+              className={
+                "tile filetile" +
+                (isReport ? " report-item" : "") +
+                (onBatch && selected.includes(f.name) ? " in-batch" : "") +
+                (usedNames
+                  ? usedNames.has(f.name)
+                    ? " used-source"
+                    : " other-source"
+                  : "")
+              }
               autoFocus={f.name === revealName}
-              draggable={!isReport}
+              draggable
               title={
                 f.name +
                 " · " +
@@ -129,8 +147,45 @@ export function InventoryPanel({
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "copy";
                 e.dataTransfer.setData("application/x-onepagebi", f.name);
+                if (onBatch && selected.includes(f.name))
+                  e.dataTransfer.setData(
+                    "application/x-onepagebi-list",
+                    JSON.stringify(selected),
+                  );
               }}
-              onClick={() => (isReport ? onReport(f.name) : onLoad(f.name))}
+              onDragEnd={() => {
+                if (onBatch) {
+                  setPicked([]);
+                  setAnchor("");
+                }
+              }}
+              onClick={(e) => {
+                if (onBatch && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+                  const a = files.findIndex((x) => x.name === anchor),
+                    b = files.findIndex((x) => x.name === f.name);
+                  if (e.shiftKey && a >= 0)
+                    setPicked([
+                      ...new Set([
+                        ...selected,
+                        ...files
+                          .slice(Math.min(a, b), Math.max(a, b) + 1)
+                          .map((x) => x.name),
+                      ]),
+                    ]);
+                  else
+                    setPicked(
+                      selected.includes(f.name)
+                        ? selected.filter((n) => n !== f.name)
+                        : [...selected, f.name],
+                    );
+                  setAnchor(f.name);
+                  return;
+                }
+                setPicked([]);
+                setAnchor(f.name);
+                if (isReport) onReport(f.name);
+                else onLoad(f.name);
+              }}
             >
               <span className="item-ext">{isReport ? "BI" : ext}</span>
               <Icon
@@ -149,6 +204,17 @@ export function InventoryPanel({
         })}
       </div>
       <div className="bagfoot">
+        {onBatch && selected.length > 0 && (
+          <button
+            className="textbtn"
+            onClick={() => {
+              onBatch(selected);
+              setPicked([]);
+            }}
+          >
+            {t("Add selected ({count})", { count: selected.length })}
+          </button>
+        )}
         <span>
           {files.length
             ? t("Items: {count} · Click an item to open it", {

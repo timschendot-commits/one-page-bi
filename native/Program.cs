@@ -92,6 +92,10 @@ namespace OnePageBI {
     object Dispatch(string method,Dictionary<string,object> d){
       string role=d.ContainsKey("role")?(string)d["role"]:"main";
       switch(method){
+        case "startPool":store.StartPool();return true;
+        case "materialLoad":return store.Material((string)d["name"]);
+        case "materialDrop":return store.Material((string)d["name"],Convert.FromBase64String((string)d["bytes"]));
+        case "materialRemove":store.RemoveMaterial((string)d["token"]);return true;
         case "inventory": return store.Inventory();
         case "desktop": store.Folder=store.Desktop;return store.Inventory();
         case "examples": store.Folder=store.Examples;return store.Inventory();

@@ -733,3 +733,88 @@ dialog:has(.largepreview) {
   outline: 3px solid var(--green);
   outline-offset: -3px;
 }
+.pool-item {
+  padding: 3px 2px;
+}
+.pool-item b {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+}
+.pool-item.unused {
+  background: #b4b4a9;
+  filter: grayscale(1);
+  color: #55594e;
+}
+.pool-item.unused svg {
+  opacity: 0.52;
+}
+.pool-item.in-use {
+  background: #c9dec0;
+  box-shadow: inset 0 0 0 2px #608258;
+}
+.using {
+  position: absolute;
+  right: 3px;
+  top: 0;
+  color: #345e36;
+  font-weight: bold;
+}
+.muted-choice {
+  filter: grayscale(1);
+  opacity: 0.68;
+}
+.candidate-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+.candidate-list button {
+  display: flex;
+  text-align: left;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.candidate-list button > span {
+  flex: 1;
+}
+.candidate-list small,
+.source-binding small {
+  display: block;
+  color: #566752;
+  font-size: 12px;
+}
+.source-binding {
+  padding: 9px 0;
+  border-top: 1px solid #aab6a0;
+  overflow-wrap: anywhere;
+}
+.source-binding p {
+  font-size: 12px;
+}
+.sheet input[type="number"] {
+  width: 65px;
+}
+.filetile.in-batch {
+  outline: 2px solid #507747;
+  outline-offset: -3px;
+  background: #d1e2c4;
+}
+.material-hint {
+  display: block;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.inventory .filetile.other-source:not(:hover):not(:focus-visible) {
+  filter: grayscale(1);
+  opacity: 0.68;
+}
+.inventory .filetile.used-source {
+  outline: 2px solid #317347;
+  outline-offset: -3px;
+}

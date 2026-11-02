@@ -22,7 +22,7 @@ export interface Table {
 }
 export interface Source {
   sheets: string[];
-  table: (sheet: string) => Table;
+  table: (sheet: string, headerRow?: number) => Table;
 }
 const limit = 10000,
   width = 80;
@@ -42,9 +42,14 @@ export function raw(c: Cell): string {
     fail("Errors and Boolean values are not supported.");
   return String(c.v ?? "").trim();
 }
-function table(lines: Line[], sheet: string, date1904: boolean): Table {
+function table(
+  lines: Line[],
+  sheet: string,
+  date1904: boolean,
+  headerRow = 1,
+): Table {
   const first = lines[0];
-  if (!first || first.n !== 1 || !first.cells.length)
+  if (!first || first.n !== headerRow || !first.cells.length)
     fail("The first row must contain column headers.");
   const headers = Array.from(first.cells, (c) => raw(c));
   if (
@@ -60,7 +65,8 @@ function table(lines: Line[], sheet: string, date1904: boolean): Table {
 }
 export function readSource(bytes: Uint8Array, name: string): Source {
   if (bytes.length > 5 * 1024 * 1024) fail("The file exceeds the 5 MiB limit.");
-  if (/\.csv$/i.test(name)) {
+  if (/\.(csv|tsv)$/i.test(name)) {
+    const format = /\.tsv$/i.test(name) ? "TSV" : "CSV";
     let content: string;
     try {
       content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -70,49 +76,55 @@ export function readSource(bytes: Uint8Array, name: string): Source {
     if (content.includes("\0"))
       fail("The CSV contains a null character. Save it as UTF-8.");
     let rows: { record: string[]; info: { bytes: number } }[];
-    let records = 0;
-    try {
-      rows = parse(content, {
-        bom: true,
-        info: true,
-        skip_empty_lines: true,
-        max_record_size: 100000,
-        on_record: (row, context) => {
-          if (context.index > width || ++records > limit + 1)
-            fail("The table exceeds 80 columns or 10,000 data rows.");
-          return row;
-        },
-      }) as unknown as typeof rows;
-    } catch (e) {
-      if (e instanceof LocalizedError) throw e;
-      const row = (e as { lines?: number }).lines;
-      if (typeof row === "number")
+    const readCsv = (headerRow = 1) => {
+      if (!Number.isInteger(headerRow) || headerRow < 1 || headerRow > 50)
+        throw new Error("Header row: 1–50");
+      let records = 0;
+      try {
+        rows = parse(content, {
+          delimiter: format === "TSV" ? "\t" : ",",
+          from_line: headerRow,
+          bom: true,
+          info: true,
+          skip_empty_lines: true,
+          max_record_size: 100000,
+          on_record: (row, context) => {
+            if (context.index > width || ++records > limit + 1)
+              fail("The table exceeds 80 columns or 10,000 data rows.");
+            return row;
+          },
+        }) as unknown as typeof rows;
+      } catch (e) {
+        if (e instanceof LocalizedError) throw e;
+        const row = (e as { lines?: number }).lines;
+        if (typeof row === "number")
+          return fail(
+            "Invalid CSV near row {row}. Check row lengths, quotes and comma delimiters.",
+            { row },
+          );
         return fail(
-          "Invalid CSV near row {row}. Check row lengths, quotes and comma delimiters.",
-          { row },
+          "Invalid CSV. Check row lengths, quotation marks and comma delimiters.",
         );
-      return fail(
-        "Invalid CSV. Check row lengths, quotation marks and comma delimiters.",
-      );
-    }
-    const data =
-      bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
-        ? bytes.subarray(3)
-        : bytes;
-    let offset = 0,
-      physicalLine = 1;
-    const lines = rows.map(({ record, info }) => {
-      let lastLine = physicalLine;
-      while (offset < info.bytes) {
-        lastLine = physicalLine;
-        const b = data[offset++];
-        if (b === 13 && data[offset] === 10) offset++;
-        if (b === 13 || b === 10) physicalLine++;
       }
-      return { n: lastLine, cells: record };
-    });
-    const t = table(lines, "CSV", false);
-    return { sheets: ["CSV"], table: () => t };
+      const data =
+        bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+          ? bytes.subarray(3)
+          : bytes;
+      let offset = 0,
+        physicalLine = 1;
+      const lines = rows.map(({ record, info }) => {
+        let lastLine = physicalLine;
+        while (offset < info.bytes) {
+          lastLine = physicalLine;
+          const b = data[offset++];
+          if (b === 13 && data[offset] === 10) offset++;
+          if (b === 13 || b === 10) physicalLine++;
+        }
+        return { n: lastLine, cells: record };
+      });
+      return table(lines, format, false, headerRow);
+    };
+    return { sheets: [format], table: (_, row = 1) => readCsv(row) };
   }
   if (!/\.xlsx$/i.test(name) || bytes[0] !== 80 || bytes[1] !== 75)
     fail("Choose an XLSX workbook or a UTF-8 CSV file.");
@@ -137,26 +149,37 @@ export function readSource(bytes: Uint8Array, name: string): Source {
   if (!sheets.length) fail("The workbook has no readable visible worksheet.");
   return {
     sheets,
-    table: (sheet: string) => {
+    table: (sheet: string, headerRow = 1) => {
       if (!sheets.includes(sheet)) fail("Choose a visible worksheet.");
       const ws = wb.Sheets[sheet],
         ref = ws["!ref"];
       if (!ref) return fail("The worksheet is empty.");
       const range = XLSX.utils.decode_range(ref);
-      if (range.e.r > limit || range.e.c >= width)
+      if (
+        !Number.isInteger(headerRow) ||
+        headerRow < 1 ||
+        headerRow > 50 ||
+        range.e.r - headerRow + 1 > limit ||
+        range.e.c >= width
+      )
         fail(
           "Reduce the worksheet to 10,001 rows including headers and 80 columns.",
         );
-      if (ws["!merges"]?.length)
+      if (ws["!merges"]?.some((m) => m.e.r >= headerRow - 1))
         fail("Unmerge the cells and use a single header row.");
       const lines: Line[] = [];
-      for (let r = 0; r <= range.e.r; r++) {
+      for (let r = headerRow - 1; r <= range.e.r; r++) {
         const cells: Cell[] = [];
         for (let c = 0; c <= range.e.c; c++)
           cells.push(ws[XLSX.utils.encode_cell({ r, c })]);
         lines.push({ n: r + 1, cells });
       }
-      return table(lines, sheet, Boolean(wb.Workbook?.WBProps?.date1904));
+      return table(
+        lines,
+        sheet,
+        Boolean(wb.Workbook?.WBProps?.date1904),
+        headerRow,
+      );
     },
   };
 }
@@ -237,6 +260,7 @@ export function validate(
   name: string,
   unit: string,
   recipe: RecipeId = "sales",
+  dayFirst = false,
 ): Report {
   const activeFields = fieldsFor(recipe);
   for (const f of activeFields) {
@@ -289,7 +313,7 @@ export function validate(
     let field: Message =
       recipe === "cashflow" ? "Transaction date" : "Sales date";
     try {
-      const date = dateValue(cells[map.date!], t.date1904);
+      const date = dateValue(cells[map.date!], t.date1904, dayFirst);
       field = recipe === "cashflow" ? "Signed amount" : "Line amount";
       const amount =
         recipe === "cashflow" && bothSides

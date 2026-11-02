@@ -27,6 +27,7 @@ namespace OnePageBI {
       internal byte[] Bytes;
     }
     readonly Dictionary<string,InputCopy> snapshots=new Dictionary<string,InputCopy>();
+    readonly Dictionary<string,InputCopy> pool=new Dictionary<string,InputCopy>();
     internal readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 64*1024*1024, RecursionLimit=128 };
     static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
     const int MaxInput = 5*1024*1024;
@@ -42,7 +43,7 @@ namespace OnePageBI {
     }
     internal static bool SupportedName(string name){
       return !String.IsNullOrEmpty(name) && !name.StartsWith("~$") &&
-        (IsReport(name) || name.EndsWith(".csv",StringComparison.OrdinalIgnoreCase) || name.EndsWith(".xlsx",StringComparison.OrdinalIgnoreCase));
+        (IsReport(name) || name.EndsWith(".csv",StringComparison.OrdinalIgnoreCase) || name.EndsWith(".tsv",StringComparison.OrdinalIgnoreCase) || name.EndsWith(".xlsx",StringComparison.OrdinalIgnoreCase));
     }
     static bool Allowed(FileInfo f){
       return SupportedName(f.Name) && (f.Attributes & (FileAttributes.Hidden|FileAttributes.System|FileAttributes.ReparsePoint))==0;
@@ -69,7 +70,24 @@ namespace OnePageBI {
         if(s.Length>MaxInput)throw new DesktopError("The file exceeds the 5 MiB limit.","文件超过 5 MiB 上限。");
         using(var m=new MemoryStream()){s.CopyTo(m);input=m.ToArray();}
       }
-      if(file.Extension.Equals(".xlsx",StringComparison.OrdinalIgnoreCase)){
+      return Register(name,input,role);
+    }
+    internal object Material(string name,byte[] supplied=null){
+      if(String.IsNullOrWhiteSpace(name)||name.IndexOfAny(Path.GetInvalidFileNameChars())>=0||name!=Path.GetFileName(name)||!SupportedName(name))throw new DesktopError("Use CSV, XLSX or a marked One Page BI report.","请使用 CSV、XLSX 或有标记的 One Page BI 报表。");
+      int cap=IsReport(name)?16*1024*1024:MaxInput;
+      byte[] input=supplied;
+      if(input==null){
+        var f=InventoryItem(name,IsReport(name));
+        using(var stream=new FileStream(f.FullName,FileMode.Open,FileAccess.Read,FileShare.Read)){
+          if(stream.Length>cap)throw new DesktopError("This material exceeds the file size limit.","材料超过文件大小上限。");
+          using(var memory=new MemoryStream()){stream.CopyTo(memory);input=memory.ToArray();}
+        }
+      }
+      if(input.Length>cap)throw new DesktopError("This material exceeds the file size limit.","材料超过文件大小上限。");
+      return Register(name,input,"pool");
+    }
+    object Register(string name,byte[] input,string role){
+      if(name.EndsWith(".xlsx",StringComparison.OrdinalIgnoreCase)){
         using(var zip=new ZipArchive(new MemoryStream(input),ZipArchiveMode.Read)){
           if(zip.Entries.Count>2000 || zip.Entries.Sum(e=>e.Length)>32*1024*1024L || zip.GetEntry("xl/workbook.xml")==null)
             throw new DesktopError("Unsupported workbook or above the unpacked limit of 32 MiB or 2,000 entries.","不支持该工作簿结构，或解压后超过 32 MiB / 2,000 项。");
@@ -77,8 +95,19 @@ namespace OnePageBI {
       }
       var copy=new InputCopy{Name=name,Role=role,Bytes=input,Token=Guid.NewGuid().ToString("N")};
       using(var sha=SHA256.Create()) copy.Hash=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","").ToLowerInvariant();
-      snapshots[role]=copy;
+      if(role=="pool"){
+        var existing=pool.Values.FirstOrDefault(c=>c.Hash==copy.Hash);
+        if(existing!=null)return new {name=existing.Name,token=existing.Token,sha256=existing.Hash,bytes="",duplicate=true};
+        if(pool.Count>=9)throw new DesktopError("All nine slots are occupied. Remove a material first.","九个材料格都已占用，请先移出一份材料。");
+        pool.Add(copy.Token,copy);
+      }else snapshots[role]=copy;
       return new {name=name,token=copy.Token,sha256=copy.Hash,bytes=Convert.ToBase64String(input)};
+    }
+    internal void StartPool(){pool.Clear();}
+    internal void RemoveMaterial(string token){pool.Remove(token);}
+    InputCopy Bound(string token,string role){
+      InputCopy src;if(!pool.TryGetValue(token,out src))throw new DesktopError("Material removed. Choose the report again.","材料已移出，请重新选择报表。");
+      return new InputCopy{Role=role,Name=src.Name,Token=token,Bytes=src.Bytes,Hash=src.Hash};
     }
     InputCopy RequireCopy(string role,string token){
       InputCopy copy;
@@ -87,7 +116,17 @@ namespace OnePageBI {
     }
     internal string Archive(Dictionary<string,object> d) {
       string recipe=(string)d["recipe"];
-      var copies=recipe=="payout"?new[]{RequireCopy("settlement",(string)d["token"]),RequireCopy("bank",(string)d["bankToken"])}:new[]{RequireCopy("main",(string)d["token"])};
+      InputCopy[] copies;
+      if(d.ContainsKey("materialToken")){
+        var firstToken=(string)d["materialToken"];
+        if(d.ContainsKey("periodTokens")){
+          var tokens=((string)d["periodTokens"]).Split(',');
+          if(tokens.Length<2 || tokens.Length>9 || (recipe!="sales" && recipe!="orders"))throw new InvalidDataException();
+          copies=tokens.Select((token,i)=>Bound(token,"period-"+(i+1).ToString("00"))).ToArray();
+        }else if(recipe=="payout") copies=new[]{Bound(firstToken,"settlement"),Bound((string)d["secondToken"],"bank")};
+        else if(d.ContainsKey("secondToken")) copies=new[]{Bound(firstToken,"lines"),Bound((string)d["secondToken"],"headers")};
+        else copies=new[]{Bound(firstToken,"main")};
+      }else copies=recipe=="payout"?new[]{RequireCopy("settlement",(string)d["token"]),RequireCopy("bank",(string)d["bankToken"])}:new[]{RequireCopy("main",(string)d["token"])};
       var first=copies[0];
       Directory.CreateDirectory(Reports);
       string id=Guid.NewGuid().ToString("N"), stage=Path.Combine(Reports,".partial-"+id), dest=Path.Combine(Reports,id);
@@ -104,7 +143,7 @@ namespace OnePageBI {
         File.WriteAllText(Path.Combine(stage,"template.json"),(string)d["template"],Utf8);
         byte[] png=ReadPng((string)d["png"]);
         File.WriteAllBytes(Path.Combine(stage,"exports","report.png"),png);
-        var meta=new {id=id,created=(string)d["created"],source=first.Name,sha256=first.Hash,sources=copies.Select(c=>new {role=c.Role,name=c.Name,sha256=c.Hash}).ToArray(),rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=recipe,appVersion="0.3.0",language=Language,schemaVersion=1};
+        var meta=new {id=id,created=(string)d["created"],source=first.Name,sha256=first.Hash,sources=copies.Select(c=>new {role=c.Role,name=c.Name,sha256=c.Hash}).ToArray(),rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=recipe,appVersion="0.4.0",language=Language,schemaVersion=1};
         File.WriteAllText(Path.Combine(stage,"metadata.json"),Json.Serialize(meta),Utf8);
         Directory.Move(stage,dest);
       } finally {if(Directory.Exists(stage)) Directory.Delete(stage,true);}

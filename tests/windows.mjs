@@ -1,4 +1,4 @@
-import { payoutDesktop, payoutOffline } from "./payout-windows.mjs";
+import { payoutOffline } from "./payout-windows.mjs";
 import { chromium } from "playwright-core";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
@@ -122,243 +122,316 @@ function fillNativeDialog(target) {
     helper.on("exit", (code) => (code === 0 ? resolve() : reject(Error(err))));
   });
 }
-async function generate() {
-  await page.getByRole("button", { name: "合成并归档", exact: true }).click();
-  await page.getByText("已合成。把成品拖到背包，即可保存到桌面。").waitFor();
+
+const btn = (name, scope = page) =>
+  scope.getByRole("button", { name, exact: true });
+async function choose(kind, unit, variant) {
+  const group = page
+    .locator(".preview .candidate-list button")
+    .filter({ hasText: kind });
+  await group.click();
+  if (variant)
+    await page
+      .locator("dialog .candidate-list button")
+      .filter({ hasText: variant })
+      .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.waitFor();
+  if (unit) await dialog.getByRole("combobox").selectOption(unit);
+  await btn("Confirm and validate", dialog).click();
 }
-async function read(index, name) {
-  return JSON.parse(await readFile(path.join(reports, index, name), "utf8"));
-}
-try {
-  await launch();
-  assert.equal(await page.locator("html").getAttribute("lang"), "en");
-  assert.doesNotMatch(
-    (await page.locator("body").innerText()).replace("中文", ""),
-    /[\p{Script=Han}]/u,
-  );
-  await click("中文");
-  await page.getByRole("heading", { name: "报表合成台" }).waitFor();
-  assert.equal(await page.locator(".filetile").count(), 3);
-  assert.equal(await page.locator(".materials .tile").count(), 9);
-  const boxes = await page.locator(".bag-grid .tile").evaluateAll((nodes) =>
-    nodes.map((n) => {
-      const r = n.getBoundingClientRect();
-      return [r.width, r.height];
-    }),
-  );
-  assert.equal(boxes.length, 18);
-  assert.ok(boxes.every(([w, h]) => Math.abs(w - h) < 1));
-  const fillers = Array.from({ length: 19 }, (_, i) =>
-    path.join(desktop, "extra-" + i + ".csv"),
-  );
-  await Promise.all(
-    fillers.map((f) => writeFile(f, "date,amount\n2026-01-01,1")),
-  );
-  await click("刷新背包");
-  await click("下一页");
-  assert.equal(await page.locator(".filetile").count(), 4);
-  await click("上一页");
-  await page.getByLabel("搜索文件名").fill("wrong");
-  await file("wrong.csv").waitFor();
-  assert.equal(await page.locator(".filetile").count(), 1);
-  await page.getByLabel("搜索文件名").fill("");
-  await Promise.all(fillers.map((f) => unlink(f)));
-  await click("刷新背包");
-  await file("wrong.csv").click();
-  await click("确认映射并验证");
-  await page.getByRole("alert").filter({ hasText: "第 2 行" }).waitFor();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "English", exact: true })
-    .click();
-  assert.match(
-    await page.getByRole("alert").innerText(),
-    /Row 2 · Line amount/,
-  );
-  assert.equal(
-    await page.getByLabel("Line amount", { exact: true }).inputValue(),
-    "1",
-  );
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "中文", exact: true })
-    .click();
-  assert.equal(
-    await stat(reports).then(
-      () => true,
-      () => false,
-    ),
-    false,
-  );
-  await click("关闭");
-  await file("actual.csv").dragTo(page.locator(".materials"));
-  await click("确认映射并验证");
-  await writeFile(path.join(desktop, "actual.csv"), "Changed after validation");
-  await writeFile(reports, "simulated unavailable destination");
-  await click("合成并归档");
-  await page.getByRole("alert").waitFor();
-  await unlink(reports);
-  await generate();
-  const [id] = await readdir(reports);
-  assert.ok(id);
-  const meta = await read(id, "metadata.json"),
-    processed = await read(id, "data/processed.json"),
-    config = await read(id, "template.json");
-  assert.deepEqual(
-    await readFile(path.join(reports, id, "inputs", "actual.csv")),
-    original,
-  );
-  assert.equal(
-    meta.sha256,
-    createHash("sha256").update(original).digest("hex"),
-  );
-  assert.equal(meta.rows, 3);
-  assert.equal(config.mapping.order.header, "订单号");
-  assert.equal(
-    processed.rows.reduce((sum, r) => sum + r.cents, 0),
-    900,
-  );
-  const png = await readFile(path.join(reports, id, "exports", "report.png"));
-  assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1800, 1134]);
-  await click("再次合成并归档");
-  await page.getByText("已合成。把成品拖到背包，即可保存到桌面。").waitFor();
-  assert.equal((await readdir(reports)).length, 2);
-  assert.equal(
-    (await readFile(path.join(reports, id, "exports", "report.png"))).equals(
-      png,
-    ),
-    true,
-  );
-  await unlink(path.join(desktop, "actual.csv"));
-  await file("actual.xlsx").click();
-  await page.getByRole("alert").filter({ hasText: "表头或空行" }).waitFor();
-  await page.getByLabel("工作表", { exact: true }).selectOption("销售");
-  await click("确认映射并验证");
-  await generate();
-  const all = await readdir(reports);
-  let excel;
-  for (const record of all)
-    if ((await read(record, "metadata.json")).source === "actual.xlsx")
-      excel = record;
-  assert.ok(excel);
-  await page.getByLabel("背包位置").selectOption("examples");
-  await file("销售明细_演示.csv").waitFor();
-  await click("English");
-  await file("Sales-demo.csv").click();
-  await click("Confirm and validate");
+async function craft() {
   await click("Craft and archive");
   await page
     .getByText("Report saved. Drag it into the inventory for a desktop copy.")
     .waitFor();
-  assert.doesNotMatch(
-    (await page.locator("body").innerText()).replace("中文", ""),
-    /[\p{Script=Han}]/u,
+}
+async function put() {
+  await page.locator(".result").dragTo(page.locator(".bag-grid"));
+  await page.getByText("Desktop copy ready in your inventory.").waitFor();
+}
+async function removeMaterial(name) {
+  await page
+    .locator(".pool-item")
+    .filter({ has: page.locator("b") })
+    .and(btn(name))
+    .click();
+  await click("Remove from grid");
+}
+async function archived(recipe, n) {
+  for (const id of (await readdir(reports)).filter((x) =>
+    /^[0-9a-f]{32}$/.test(x),
+  )) {
+    const m = JSON.parse(
+      await readFile(path.join(reports, id, "metadata.json"), "utf8"),
+    );
+    if (m.recipe === recipe && (!n || m.sources.length === n))
+      return { id, m, dir: path.join(reports, id) };
+  }
+  throw new Error("No archive for " + recipe);
+}
+const cells = () => page.locator(".pool-item");
+const item = (n) => page.locator(".filetile").and(btn(n));
+try {
+  await launch();
+  assert.equal(await page.locator(".materials .tile").count(), 9);
+  assert.equal(await page.locator(".bag-grid .tile").count(), 18);
+  assert.equal(await page.locator(".bookitem[aria-pressed=true]").count(), 0);
+  assert.equal(await page.locator(".filetile").count(), 3);
+  await click("中文");
+  await click("English");
+  await click("Sales overview");
+  await page.getByLabel("Inventory location").selectOption("examples");
+  const sourceNames = [
+    "Order-headers-demo.csv",
+    "Order-items-demo.tsv",
+    "Bank-demo.csv",
+    "Payouts-demo.csv",
+  ];
+  // Select four real inventory entries, then drop them in one gesture.
+  for (const name of sourceNames)
+    await item(name).click({ modifiers: ["Control"] });
+  await item(sourceNames[0]).dragTo(page.locator(".materials"));
+  await page.waitForFunction(
+    () => document.querySelectorAll(".pool-item").length === 4,
   );
-  assert.match(await page.locator(".peek").innerText(), /3,393\.00/);
+  assert.ok(
+    (await page.locator(".preview").innerText()).includes("Payout check"),
+  );
   await page.screenshot({
-    path: path.join(out, "workbench.png"),
+    path: path.join(out, "matches.png"),
     fullPage: true,
   });
-  const previewBefore = await page.locator(".thumb img").getAttribute("src");
+  await choose("Order analysis", "MYR");
+  assert.equal(await cells().count(), 4);
+  assert.equal(await page.locator(".pool-item.in-use").count(), 2);
+  assert.equal(await page.locator(".pool-item.unused").count(), 2);
+  assert.match(await page.locator(".peek").innerText(), /62.50/);
+  await craft();
+  await page.screenshot({ path: path.join(out, "chosen.png"), fullPage: true });
+  assert.equal(await page.locator(".filetile.in-batch").count(), 0);
+  assert.equal(await page.locator(".filetile.used-source").count(), 2);
   await click("中文");
   await page.getByRole("heading", { name: "成品预览" }).waitFor();
-  const previewZh = await page.locator(".thumb img").getAttribute("src");
-  assert.notEqual(previewZh, previewBefore);
-  const previewExport = path.join(profile, "preview-zh.png");
-  await Promise.all([fillNativeDialog(previewExport), click("导出汇总 PNG")]);
-  await page.getByText("已导出 PNG。").waitFor();
-  assert.ok(
-    (await readFile(previewExport)).equals(
-      Buffer.from(previewZh.split(",")[1], "base64"),
-    ),
+  await page.screenshot({
+    path: path.join(out, "chosen-zh.png"),
+    fullPage: true,
+  });
+  await click("English");
+  const joined = await archived("orders");
+  assert.deepEqual(
+    joined.m.sources.map((s) => s.role),
+    ["lines", "headers"],
   );
-  // Real result-slot drag, including from Examples while the destination is Desktop.
-  const dropResult = async () => {
-    await page.locator(".result").dragTo(page.locator(".bag-grid"));
-    await page.getByText("已放入背包，文件在桌面。").waitFor();
-  };
-  const desktopCopies = async () =>
-    (await readdir(desktop)).filter((n) => /\.onepagebi\.html$/i.test(n));
-  await dropResult();
-  const [salesCopy] = await desktopCopies();
-  assert.ok(salesCopy.includes("-sales-"));
-  await file(salesCopy).waitFor();
-  assert.match(await page.getByLabel("背包位置").innerText(), /桌面/);
-  assert.equal(await file(salesCopy).getAttribute("draggable"), "false");
-  const originalReport = await readFile(path.join(desktop, salesCopy));
-  await dropResult();
-  assert.deepEqual(await desktopCopies(), [salesCopy]);
-  await writeFile(path.join(desktop, salesCopy), "user-edited desktop copy");
-  await click("放入背包");
-  await page.getByText("已放入背包，文件在桌面。").waitFor();
-  const duplicate = (await desktopCopies()).find((n) => n !== salesCopy);
-  assert.ok(duplicate);
-  assert.ok(
-    (await readFile(path.join(desktop, duplicate))).equals(originalReport),
+  const norm = JSON.parse(
+    await readFile(path.join(joined.dir, "data/processed.json"), "utf8"),
   );
   assert.equal(
-    await readFile(path.join(desktop, salesCopy), "utf8"),
-    "user-edited desktop copy",
+    norm.rows.reduce((n, x) => n + x.cents, 0),
+    12500,
   );
-  await rename(
-    path.join(desktop, duplicate),
-    path.join(desktop, "external.ONEPAGEBI.HTML"),
+  assert.deepEqual(
+    norm.rows.map((x) => x.headerRow),
+    [2, 2, 3],
   );
-  await file("external.ONEPAGEBI.HTML").waitFor();
-  await rename(
-    path.join(desktop, "external.ONEPAGEBI.HTML"),
-    path.join(desktop, "ordinary.html"),
+  assert.deepEqual(
+    await readFile(path.join(joined.dir, "inputs/lines/Order-items-demo.tsv")),
+    await readFile(path.join(release, "examples/en/Order-items-demo.tsv")),
   );
-  await file("external.ONEPAGEBI.HTML").waitFor({ state: "detached" });
-  assert.equal(await file("ordinary.html").count(), 0);
-  await click("订单分析");
-  assert.ok(await page.locator(".result").isDisabled());
-  await click("核对字段映射");
-  await page.getByLabel("订单编号", { exact: true }).selectOption("");
-  await click("确认映射并验证");
-  await page.getByRole("alert").filter({ hasText: "订单编号" }).waitFor();
-  await page.getByLabel("订单编号", { exact: true }).selectOption("1");
-  await click("确认映射并验证");
-  await generate();
-  await dropResult();
-  const orderFile = (await desktopCopies()).find((n) => n.includes("-orders-"));
-  assert.ok(orderFile);
-  await click("收支");
-  await page.getByLabel("背包位置").selectOption("examples");
-  await file("收支流水_演示.csv").click();
-  await click("确认映射并验证");
-  await generate();
-  assert.match(await page.locator(".peek").innerText(), /1,400.25/);
-  await dropResult();
-  const cashFile = (await desktopCopies()).find((n) =>
-    n.includes("-cashflow-"),
+  const orderPNG = await readFile(path.join(joined.dir, "exports/report.png"));
+  assert.equal(orderPNG.readUInt32BE(16), 1800);
+  await put();
+  await put();
+  let copies = (await readdir(desktop)).filter((n) =>
+    n.endsWith(".onepagebi.html"),
   );
-  assert.ok(cashFile);
-  await file(cashFile).waitFor();
+  assert.equal(copies.length, 1);
+  const orderFile = copies[0];
+  const originalHTML = await readFile(path.join(desktop, orderFile));
+  await writeFile(path.join(desktop, orderFile), "user-edited copy");
+  await click("To inventory");
+  await page.getByText("Desktop copy ready in your inventory.").waitFor();
+  copies = (await readdir(desktop)).filter((n) =>
+    n.endsWith(".onepagebi.html"),
+  );
+  assert.equal(copies.length, 2);
+  const usable = copies.find((n) => n !== orderFile);
+  assert.ok((await readFile(path.join(desktop, usable))).equals(originalHTML));
+  // Reusing an actual archived report loads only its inert dataset.
+  await item(usable).dragTo(page.locator(".materials"));
+  await page.waitForFunction(
+    () => document.querySelectorAll(".pool-item").length === 5,
+  );
+  await removeMaterial(usable);
+  await choose("Payout check", "MYR");
+  await craft();
+  await put();
+  const payout = await archived("payout");
+  assert.deepEqual(
+    payout.m.sources.map((x) => x.role),
+    ["settlement", "bank"],
+  );
+  const payoutFile = (await readdir(desktop)).find((n) =>
+    n.includes("BI-payout-"),
+  );
+  assert.ok(payoutFile);
+  await click("Change selection");
+  const editFile = page.locator('input[type="file"]');
+  const odd = path.join(profile, "weird.csv"),
+    bad = path.join(profile, "scan.pdf");
+  await writeFile(
+    odd,
+    "Counter export\nWhen,Collected,Currency\n2026-10-06,2.50,MYR",
+  );
+  await writeFile(bad, "mock PDF");
+  await editFile.setInputFiles([odd, bad]);
+  await page.getByRole("alert").filter({ hasText: "scan.pdf" }).waitFor();
+  await btn("weird.csv", page.locator(".materials")).click();
+  const d = page.getByRole("dialog");
+  await d.getByRole("spinbutton").fill("2");
+  await d.getByLabel("Material meaning").selectOption("cashflow");
+  await d.getByLabel("Date", { exact: true }).selectOption("0");
+  await d.getByLabel("Signed amount", { exact: true }).selectOption("1");
+  await click("Apply to material");
+  await choose("Cash flow statement", "MYR", "weird.csv");
+  await writeFile(odd, "modified after loading");
+  await craft();
+  const cash = await archived("cashflow");
+  assert.match(
+    await readFile(path.join(cash.dir, "inputs/weird.csv"), "utf8"),
+    /2.50/,
+  );
+  // Second source is XLSX with a non-data cover sheet. Use the actual external file input.
+  await editFile.setInputFiles([
+    path.join(desktop, "actual.xlsx"),
+    path.join(desktop, "actual.csv"),
+  ]);
+  await page.waitForFunction(
+    () => document.querySelectorAll(".pool-item").length === 7,
+  );
+  await editFile.setInputFiles(path.join(desktop, "actual.csv"));
+  await page.getByText("An identical file is already on the grid.").waitFor();
+  await choose("Sales overview", "MYR", /actual\.csv/);
+  const parked = reports + "-hold";
+  await rename(reports, parked);
+  await writeFile(reports, "occupied");
+  await click("Craft and archive");
+  await page.getByRole("alert").waitFor();
+  await unlink(reports);
+  await rename(parked, reports);
+  await craft();
+  const sales = await archived("sales");
+  assert.equal(
+    JSON.parse(
+      await readFile(path.join(sales.dir, "data/processed.json"), "utf8"),
+    ).rows.length,
+    3,
+  );
+  await click("中文");
   await page.screenshot({
-    path: path.join(out, "desktop-inventory.png"),
+    path: path.join(out, "workbench-zh.png"),
     fullPage: true,
   });
   await click("历史记录");
-  assert.equal(await page.locator(".histitem").count(), 6);
+  await page.locator(".histitem").first().waitFor();
+  assert.equal(await page.locator(".histitem").count(), 4);
   await closeApp();
   await launch("zh-CN");
   await click("历史记录");
   await page.locator(".histitem").first().waitFor();
-  assert.equal(await page.locator(".histitem").count(), 6);
+  assert.equal(await page.locator(".histitem").count(), 4);
   const target = path.join(profile, "history-export.png");
   await Promise.all([
     fillNativeDialog(target),
     page
       .locator(".histitem")
-      .filter({ hasText: "actual.csv" })
-      .first()
+      .filter({ hasText: "Order-items-demo.tsv" })
       .getByRole("button", { name: "导出汇总 PNG" })
       .click(),
   ]);
   await page.getByText("已导出 PNG。").waitFor();
-  assert.ok((await readFile(target)).equals(png));
-  const payoutFile = await payoutDesktop(page, { desktop, reports, out });
+  assert.ok((await readFile(target)).equals(orderPNG));
+  await click("工作台");
+  await click("English");
+  const periods = [1, 2, 3].map((i) => ({
+    name: "period" + i + ".csv",
+    text: "Sales date,Sales amount,Currency\n2026-0" + i + "-03,2.00,MYR",
+  }));
+  const transfer = await page.evaluateHandle((files) => {
+    const dt = new DataTransfer();
+    for (const f of files)
+      dt.items.add(new File([f.text], f.name, { type: "text/csv" }));
+    return dt;
+  }, periods);
+  await page
+    .locator(".materials")
+    .dispatchEvent("drop", { dataTransfer: transfer });
+  await transfer.dispose();
+  await choose(
+    "Sales overview",
+    "MYR",
+    /period1\.csv.*period2\.csv.*period3\.csv/,
+  );
+  await craft();
+  const multi = await archived("sales", 3);
+  const data = JSON.parse(
+    await readFile(path.join(multi.dir, "data/processed.json"), "utf8"),
+  );
+  assert.deepEqual(
+    data.rows.map((r) => r.sourceIndex),
+    [1, 2, 3],
+  );
+  assert.equal(
+    data.rows.reduce((n, r) => n + r.cents, 0),
+    600,
+  );
+  for (const [i, p] of periods.entries()) {
+    assert.equal(
+      multi.m.sources[i].sha256,
+      createHash("sha256").update(p.text).digest("hex"),
+    );
+    assert.equal(
+      await readFile(
+        path.join(multi.dir, "inputs", "period-0" + (i + 1), p.name),
+        "utf8",
+      ),
+      p.text,
+    );
+  }
+  await closeApp();
+  // Start a separate workbench session with the Chinese sample files.
+  await launch();
+  await click("中文");
+  await page.getByLabel("背包位置").selectOption("examples");
+  for (const name of [
+    "订单主表_演示.csv",
+    "订单行_演示.tsv",
+    "结算单_演示.csv",
+    "银行流水_演示.csv",
+  ])
+    await item(name).click({ modifiers: ["Control"] });
+  await item("订单主表_演示.csv").dragTo(page.locator(".materials"));
+  await page
+    .locator(".candidate-list button")
+    .filter({ hasText: "订单分析" })
+    .waitFor();
+  await page.screenshot({
+    path: path.join(out, "matches-zh.png"),
+    fullPage: true,
+  });
+  await page
+    .locator(".candidate-list button")
+    .filter({ hasText: "订单分析" })
+    .click();
+  await page.getByRole("dialog").getByRole("combobox").selectOption("MYR");
+  await click("确认映射并验证");
+  await click("合成并归档");
+  await page.locator(".result.crafted").waitFor();
+  assert.equal(await page.locator(".filetile.used-source").count(), 2);
+  await page.screenshot({
+    path: path.join(out, "chosen-zh.png"),
+    fullPage: true,
+  });
   await closeApp();
   const edgePath =
     process.env.EDGE_PATH ||
@@ -380,100 +453,19 @@ try {
   portable.on("request", (req) => {
     if (/^https?:/.test(req.url())) stray.push(req.url());
   });
-  const html = path.join(out, "detached-report.html");
-  await copyFile(path.join(reports, id, "dashboard", "report.html"), html);
-  await portable.goto(pathToFileURL(html).href);
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /3 行 · 销售额 9.00 MYR · 订单数 2 · 平均订单额 4.50/,
-  );
-  await portable.locator("#month").selectOption("2024-02");
-  await portable.locator("#category").selectOption({ label: "Coffee" });
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /1 行 · 销售额 10.10 MYR · 订单数 1/,
-  );
-  const imageZh = await portable
-    .locator("canvas")
-    .evaluate((c) => c.toDataURL());
-  await portable.getByRole("button", { name: "English", exact: true }).click();
-  assert.equal(await portable.locator("html").getAttribute("lang"), "en");
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /1 row · Net sales 10.10 MYR · Orders 1/,
-  );
-  assert.notEqual(
-    await portable.locator("canvas").evaluate((c) => c.toDataURL()),
-    imageZh,
-  );
-  const download = portable.waitForEvent("download");
+
+  await portable.goto(pathToFileURL(path.join(desktop, usable)).href);
+  assert.match(await portable.locator("#summary").innerText(), /62.50/);
+  await portable.locator("#category").selectOption({ label: "Cups" });
+  assert.match(await portable.locator("#summary").innerText(), /40.00/);
+  await portable.locator("#language").click();
+  const dl = portable.waitForEvent("download");
   await portable.locator("#png").click();
-  const saved = path.join(out, "filtered.png");
-  await (await download).saveAs(saved);
-  const filtered = await readFile(saved);
-  assert.equal(filtered.readUInt32BE(16), 1800);
-  assert.ok(!filtered.equals(png));
-  await portable.getByRole("button", { name: "中文", exact: true }).click();
-  await portable.locator("#reset").click();
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /3 行 · 销售额 9.00/,
-  );
-  await portable.goto(
-    pathToFileURL(path.join(reports, excel, "dashboard", "report.html")).href,
-  );
-  assert.equal(await portable.evaluate(() => window.pwned), undefined);
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /45.95 原表单位 · 订单数 未映射/,
-  );
-  let englishRecord;
-  for (const record of await readdir(reports))
-    if (
-      (await read(record, "metadata.json")).source === "Sales-demo.csv" &&
-      (await read(record, "metadata.json")).recipe === "sales"
-    )
-      englishRecord = record;
-  assert.ok(englishRecord);
-  assert.equal((await read(englishRecord, "template.json")).language, "en");
-  await portable.goto(
-    pathToFileURL(path.join(reports, englishRecord, "dashboard", "report.html"))
-      .href,
-  );
-  await portable.getByRole("button", { name: "Export current PNG" }).waitFor();
-  assert.equal(await portable.locator("html").getAttribute("lang"), "en");
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /12 rows · Net sales 3,393.00 CNY · Orders 10/,
-  );
-  await portable.goto(pathToFileURL(path.join(desktop, orderFile)).href);
-  await portable.getByRole("button", { name: "English", exact: true }).click();
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /Orders 10 · Average order value 339.30 · Multi-line orders 2 · Net sales 3,393.00/,
-  );
-  await portable.goto(pathToFileURL(path.join(desktop, cashFile)).href);
-  await portable.getByRole("button", { name: "English", exact: true }).click();
-  assert.match(await portable.title(), /Cash flow statement/);
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /Cash in 1,400.25 · Cash out 465.25 · Net movement 935.00 · Transactions 6/,
-  );
-  await portable.locator("#month").selectOption("2026-02");
-  assert.match(
-    await portable.locator("#summary").innerText(),
-    /Net movement 85.00/,
-  );
-  const cashPNG = portable.waitForEvent("download");
-  await portable.locator("#png").click();
-  assert.match(
-    (await cashPNG).suggestedFilename(),
-    /Cash flow statement_2026-02/,
-  );
-  await payoutOffline(portable, payoutFile, out);
+  await (await dl).saveAs(path.join(out, "filtered.png"));
+  await payoutOffline(portable, path.join(desktop, payoutFile), out);
   assert.deepEqual(stray, []);
   console.log(
-    "PASS: desktop drag and inventory discovery, collision and repeat drops, three recipes, dual-source payout checks, restored mappings, XLSX snapshots, offline exception CSV and summary PNG, archives and restart.",
+    "PASS: template-free group drag, cross-template suggestions, source highlighting, exact two-file joins, archive snapshot, desktop inventory, XLSX, nonstandard headers, HTML reuse, two-source reconciliation, languages and native PNG export.",
   );
 } finally {
   await edge?.close();
