@@ -1,3 +1,4 @@
+import { fieldHints } from "../src/field-hints";
 import { writeFile } from "node:fs/promises";
 import { openSQL, groups, normalizeHeading } from "../src/stage";
 import { business, businessIds, fieldSpec } from "../src/catalog";
@@ -31,6 +32,11 @@ for (const [id, fields] of [
   ["payout", "settlement and bank reference, dates, amounts, currency"],
 ])
   profiles.run([id, id, fields, "operations"]);
+db.run("CREATE TABLE recognition_hints(field TEXT, alias TEXT PRIMARY KEY)");
+const hints = db.prepare("INSERT INTO recognition_hints VALUES(?,?)");
+for (const [field, names] of Object.entries(fieldHints))
+  for (const name of names) hints.run([field, name]);
+hints.free();
 aliases.free();
 profiles.free();
 await writeFile("dist/profiles.sqlite", db.export());

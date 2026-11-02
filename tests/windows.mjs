@@ -1,3 +1,4 @@
+import { exerciseChoices } from "./choices-windows.mjs";
 import { payoutOffline } from "./payout-windows.mjs";
 import { chromium } from "playwright-core";
 import { spawn } from "node:child_process";
@@ -138,7 +139,7 @@ async function choose(kind, unit, variant) {
   const dialog = page.getByRole("dialog");
   await dialog.waitFor();
   if (unit) await dialog.getByRole("combobox").selectOption(unit);
-  await btn("Confirm and validate", dialog).click();
+  await btn("Preview first", dialog).click();
   if ((await dialog.isVisible()) && (await dialog.getByRole("alert").count()))
     throw Error(await dialog.innerText());
 }
@@ -290,8 +291,9 @@ try {
   await page.getByRole("alert").filter({ hasText: "scan.pdf" }).waitFor();
   await btn("weird.csv", page.locator(".materials")).click();
   const d = page.getByRole("dialog");
+  await d.getByText("File layout and SQL", { exact: true }).click();
   await d.getByRole("spinbutton").fill("2");
-  await d.getByLabel("Material meaning").selectOption("cashflow");
+  await d.getByLabel("What does this file contain?").selectOption("cashflow");
   await d.getByLabel("Date", { exact: true }).selectOption({ label: "When" });
   await d
     .getByLabel("Signed amount", { exact: true })
@@ -437,7 +439,7 @@ try {
     .filter({ hasText: "订单分析" })
     .click();
   await page.getByRole("dialog").getByRole("combobox").selectOption("MYR");
-  await click("确认映射并验证");
+  await click("先看预览");
   await click("合成并归档");
   await page.locator(".result.crafted").waitFor();
   assert.equal(await page.locator(".filetile.used-source").count(), 2);
@@ -502,6 +504,9 @@ try {
   await page.getByText(/Archive changed/).waitFor();
   await writeFile(csvPath, before);
   await closeApp();
+  await launch();
+  await exerciseChoices(page, release, profile, out);
+  await closeApp();
   const edgePath =
     process.env.EDGE_PATH ||
     path.join(
@@ -534,7 +539,7 @@ try {
   await payoutOffline(portable, path.join(desktop, payoutFile), out);
   assert.deepEqual(stray, []);
   console.log(
-    "PASS: template-free group drag, cross-template suggestions, source highlighting, exact two-file joins, archive snapshot, desktop inventory, XLSX, nonstandard headers, HTML reuse, two-source reconciliation, languages and native PNG export.",
+    "PASS: mixed-file bilingual review, guarded catalog and purpose switching, one-click repair regression, decimal-comma replay, JSONL pipeline, replenishment, repeat customers, template-free group drag, cross-template suggestions, source highlighting, exact two-file joins, archive snapshot, desktop inventory, XLSX, nonstandard headers, HTML reuse, two-source reconciliation, languages and native PNG export.",
   );
 } finally {
   await edge?.close();

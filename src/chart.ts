@@ -1,3 +1,4 @@
+import { isQuantityReport } from "./catalog";
 import { dashboard, recipes } from "./recipes";
 import { sourceUnit, translator, type Language } from "./i18n";
 import { money, type Report, type Sale } from "./model";
@@ -74,7 +75,7 @@ export function paint(
   label(
     selection +
       "   ·   " +
-      t(r.recipe === "stock" ? "Unit" : "Amount unit") +
+      t(isQuantityReport(r.recipe) ? "Unit" : "Amount unit") +
       " " +
       sourceUnit(r.unit, language),
     45,

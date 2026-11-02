@@ -106,7 +106,7 @@ namespace OnePageBI {
             if(dlg.ShowDialog(this)==DialogResult.OK)store.Folder=dlg.SelectedPath;
           }return store.Inventory();
         case "selectFile":
-          using(var dlg=new OpenFileDialog {Title=L("Choose data file","选择数据文件"),Filter=L("Data files","数据文件")+" (*.csv;*.xlsx)|*.csv;*.xlsx",InitialDirectory=store.Folder}){
+          using(var dlg=new OpenFileDialog {Title=L("Choose data file","选择数据文件"),Filter=L("Data files","数据文件")+" (*.csv;*.tsv;*.psv;*.jsonl;*.ndjson;*.xlsx)|*.csv;*.tsv;*.psv;*.jsonl;*.ndjson;*.xlsx",InitialDirectory=store.Folder}){
             if(dlg.ShowDialog(this)!=DialogResult.OK)return null;
             store.Folder=Path.GetDirectoryName(dlg.FileName);return store.Load(Path.GetFileName(dlg.FileName),role);
           }

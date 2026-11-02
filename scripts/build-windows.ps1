@@ -36,7 +36,7 @@ $ui=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'ui')
 $examples=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'examples')
 Copy-Item dist/* $ui.FullName -Force
 Copy-Item examples/* $examples.FullName -Recurse -Force
-foreach($language in @("en","zh-CN")) { Copy-Item examples/shared/*.csv (Join-Path $examples.FullName $language) -Force }
+foreach($language in @("en","zh-CN")) { Get-ChildItem examples/shared -File | Where-Object {$_.Extension -in ".csv",".psv",".jsonl"} | Copy-Item -Destination (Join-Path $examples.FullName $language) -Force }
 Copy-Item examples/shared/ATTRIBUTION.txt (Join-Path $licenses.FullName "data-attribution.txt") -Force
 Copy-Item scripts/verify_materials.py $release.FullName -Force
 Copy-Item README.md,README.zh-CN.md,REPORT-RULES.md $release.FullName -Force

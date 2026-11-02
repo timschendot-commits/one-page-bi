@@ -286,6 +286,13 @@ export function identifier(cell: Cell) {
   }
   return value;
 }
+export function sourceHeader(table: Table, index: number): string {
+  const original = table.audit?.columnOrder?.[index];
+  return (
+    (original === undefined ? undefined : table.audit?.original[original]) ||
+    table.headers[index]
+  );
+}
 export function cellLabel(c: Cell): string {
   return typeof c === "object"
     ? c.f

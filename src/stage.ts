@@ -1,21 +1,37 @@
+import { jsonRows } from "./json-lines";
 import initSql, { type Sql } from "sql.js";
 import { parse } from "csv-parse/browser/esm/sync";
 import { readSource, raw, identifier, type Table, type Source } from "./input";
-import { LocalizedError,translator,type Message,type Language } from "./i18n";
+import {
+  LocalizedError,
+  translator,
+  type Message,
+  type Language,
+} from "./i18n";
 export interface Audit {
   start: number;
   noHeader: boolean;
   delimiter: string;
   encoding: string;
+  format?: "jsonl";
   original: string[];
   columnOrder?: number[];
   headers: string[];
   removed: number[];
-  issues: {row:number; reason:"Identical to source row"|"Conflicting column meanings"|"Summary or balance row"; detail?:string}[];
+  issues: {
+    row: number;
+    reason:
+      | "Identical to source row"
+      | "Conflicting column meanings"
+      | "Summary or balance row";
+    detail?: string;
+  }[];
   query: string;
   hints: Message[];
 }
-export function issueText(i:Audit["issues"][number],lang:Language){return translator(lang)(i.reason)+(i.detail?" · "+i.detail:"");}
+export function issueText(i: Audit["issues"][number], lang: Language) {
+  return translator(lang)(i.reason) + (i.detail ? " · " + i.detail : "");
+}
 const error = (en: string, zh: string) =>
   new LocalizedError((lang) => (lang === "en" ? en : zh));
 let loading: Promise<Sql> | undefined;
@@ -235,7 +251,8 @@ function standardize(sql: Sql, table: Table, audit: Audit): Table {
       if (seen.has(key(name))) {
         audit.issues.push({
           row: audit.start,
-          reason: "Conflicting column meanings",detail:name,
+          reason: "Conflicting column meanings",
+          detail: name,
         });
         name = name + " [" + (i + 1) + "]";
       }
@@ -308,7 +325,11 @@ function standardize(sql: Sql, table: Table, audit: Audit): Table {
       const fingerprint = JSON.stringify(vals);
       const prev = fingerprints.get(fingerprint);
       if (prev)
-        audit.issues.push({ row: n, reason: "Identical to source row",detail:String(prev) });
+        audit.issues.push({
+          row: n,
+          reason: "Identical to source row",
+          detail: String(prev),
+        });
       else fingerprints.set(fingerprint, n);
       if (
         vals.some((v) =>
@@ -356,13 +377,39 @@ export function preparedSource(
 ): Source {
   if (bytes.length > 5 * 1024 * 1024)
     throw error("Data file exceeds 5 MiB.", "数据文件超过 5 MiB。");
-  if (!/\.(csv|tsv)$/i.test(name))
+  if (/\.(jsonl|ndjson)$/i.test(name)) {
+    const { text, encoding } = decode(bytes),
+      { table, blanks } = jsonRows(text);
+    return {
+      sheets: [table.sheet],
+      table: () =>
+        standardize(sql, table, {
+          start: 1,
+          noHeader: true,
+          format: "jsonl",
+          original: table.headers,
+          headers: [],
+          hints: [],
+          issues: [],
+          removed: [...blanks],
+          query: "",
+          delimiter: "",
+          encoding,
+        }),
+    };
+  }
+  if (!/\.(csv|tsv|psv)$/i.test(name))
     return wrapWorkbook(sql, readSource(bytes, name));
   const { text, encoding } = decode(bytes);
-  const delimiter = delimiterFor(text);
+  const declaration = /^sep=([,;|\t])(?:\r\n|\n|\r)/i.exec(text);
+  const delimiter = declaration?.[1] ?? delimiterFor(text);
   let rows: RecordRow[];
   try {
-    rows = records(text, delimiter);
+    rows = records(
+      declaration ? text.slice(declaration[0].length) : text,
+      delimiter,
+    );
+    if (declaration) for (const row of rows) row.n++;
   } catch (e) {
     throw error(
       "Invalid delimited file: " + (e as Error).message,

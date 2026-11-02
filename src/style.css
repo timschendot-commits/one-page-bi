@@ -840,3 +840,114 @@ dialog:has(.largepreview) {
   display: block;
   font-weight: normal;
 }
+.craft-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  color: #566451;
+  font-size: 12px;
+}
+.craft-steps li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.craft-steps li:not(:last-child)::after {
+  content: "›";
+  margin-left: 3px;
+}
+.craft-steps b {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  background: #d5d7ca;
+  color: #484e40;
+}
+.craft-steps [aria-current] {
+  color: #254b2b;
+  font-weight: 700;
+}
+.craft-steps [aria-current] b {
+  background: #486446;
+  color: white;
+}
+.recipe-browser > label {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+.recipe-browser input {
+  padding: 6px 9px;
+  width: 100%;
+  font: inherit;
+}
+.recipe-browser h3 {
+  font-size: 14px;
+  margin: 16px 0 6px;
+  color: #46573f;
+}
+.recipe-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 5px;
+}
+.recipe-choices button {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 7px 9px;
+}
+.recipe-choices small,
+.missing-guide small {
+  font-size: 11px;
+  color: #4c5a47;
+}
+.layout-tools,
+.source-fields {
+  margin: 7px 0;
+}
+.layout-tools > summary,
+.source-fields > summary,
+.audit > summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.missing-guide {
+  border-left: 4px solid #997b38;
+  background: #e9e3cb;
+  padding: 8px;
+  margin: 6px 0 9px;
+}
+.missing-guide div {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+}
+.missing-guide span {
+  font-size: 12px;
+}
+.missing-guide button {
+  justify-self: start;
+}
+.review-question {
+  font-size: 17px;
+  margin: 8px 0;
+}
+.candidate-list {
+  max-height: 22rem;
+  overflow: auto;
+}
+.files-heading {
+  margin: 12px 0 4px;
+}
+.source-fields table {
+  min-width: 70%;
+  text-align: left;
+}
+.source-fields th {
+  color: #435640;
+}

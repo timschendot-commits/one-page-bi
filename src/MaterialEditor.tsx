@@ -1,10 +1,11 @@
+import { materialCsv } from "./replay";
 import { useState } from "react";
 import { Modal } from "./Modal";
 import { useLanguage } from "./language";
 import { errorText } from "./i18n";
-import { tableCSV,issueText } from "./stage";
+import { tableCSV, issueText } from "./stage";
 import { call } from "./bridge";
-import { cellLabel } from "./input";
+import { cellLabel, sourceHeader } from "./input";
 import {
   getSheet,
   layout,
@@ -63,56 +64,83 @@ export function MaterialEditor({
     <Modal title={m.name} onClose={onClose}>
       {m.source && view ? (
         <>
-          <div className="sheet">
-            <label>
-              {t("Worksheet")}{" "}
-              <select
-                value={view.sheet}
-                onChange={(e) => {
-                  const prev = m.views.find((x) => x.sheet === e.target.value);
-                  if (prev) {
-                    setView(prev);
-                    setMode(prev.manual?.use ?? "auto");
-                    setCustom(prev.manual ?? null);
-                  } else read(e.target.value);
-                }}
-              >
-                {m.source.sheets.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </label>
-            {!m.report && (
+          {view.table && (
+            <>
+              {" "}
+              <label className="sheet">
+                {t("What does this file contain?")}{" "}
+                <select
+                  value={mode}
+                  onChange={(e) => changeUse(e.target.value as Use | "auto")}
+                >
+                  <option value="auto">{t("Detect from columns")}</option>
+                  {(Object.keys(useNames) as Use[]).map((u) => (
+                    <option key={u} value={u}>
+                      {t(useNames[u])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+          <details
+            className="layout-tools"
+            open={view.error ? true : undefined}
+          >
+            <summary>{t("File layout and SQL")}</summary>
+            <div className="sheet">
               <label>
-                {t("Header row")}{" "}
+                {t("Worksheet")}{" "}
+                <select
+                  value={view.sheet}
+                  onChange={(e) => {
+                    const prev = m.views.find(
+                      (x) => x.sheet === e.target.value,
+                    );
+                    if (prev) {
+                      setView(prev);
+                      setMode(prev.manual?.use ?? "auto");
+                      setCustom(prev.manual ?? null);
+                    } else read(e.target.value);
+                  }}
+                >
+                  {m.source.sheets.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </label>
+              {!m.report && view.sheet !== "JSON Lines" && (
+                <label>
+                  {t("Header row")}{" "}
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={view.headerRow}
+                    onChange={(e) =>
+                      read(
+                        view.sheet,
+                        Math.min(50, Math.max(1, +e.target.value || 1)),
+                        view.noHeader,
+                      )
+                    }
+                  />
+                </label>
+              )}
+            </div>
+            {!m.report && view.sheet !== "JSON Lines" && (
+              <label>
                 <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={view.headerRow}
+                  type="checkbox"
+                  checked={!!view.noHeader}
                   onChange={(e) =>
-                    read(
-                      view.sheet,
-                      Math.min(50, Math.max(1, +e.target.value || 1)),
-                      view.noHeader,
-                    )
+                    read(view.sheet, view.headerRow, e.target.checked)
                   }
                 />
+                {t("First selected row is data (no header)")}
               </label>
             )}
-          </div>
-          {!m.report && (
-            <label>
-              <input
-                type="checkbox"
-                checked={!!view.noHeader}
-                onChange={(e) =>
-                  read(view.sheet, view.headerRow, e.target.checked)
-                }
-              />
-              {t("First selected row is data (no header)")}
-            </label>
-          )}
+          </details>
           {!!view.error && (
             <p className="feedback bad" role="alert">
               {errorText(view.error, language)}
@@ -120,16 +148,18 @@ export function MaterialEditor({
           )}
           {view.table && (
             <>
-              <p className="help">{t(materialHint(view))}</p>
+              {!custom && <p className="help">{t(materialHint(view))}</p>}
               {view.table.audit && (
-                <details className="audit" open>
+                <details className="audit">
                   <summary>
                     {t("SQL material preview")} · {view.table.lines.length}{" "}
                     {t("Rows")}
                   </summary>
                   <p>
-                    {view.table.audit.encoding} ·{" "}
-                    {JSON.stringify(view.table.audit.delimiter)} ·{" "}
+                    {view.table.audit.format === "jsonl"
+                      ? "JSON Lines"
+                      : view.table.audit.encoding}{" "}
+                    · {JSON.stringify(view.table.audit.delimiter)} ·{" "}
                     {t("Header row")} {view.headerRow}
                     {view.noHeader
                       ? " · " + t("First selected row is data (no header)")
@@ -143,7 +173,8 @@ export function MaterialEditor({
                   )}
                   {view.table.audit.issues.slice(0, 5).map((i, idx) => (
                     <p className="feedback bad" key={idx}>
-                      {t("Row {row}", { row: i.row })} · {issueText(i,language)}
+                      {t("Row {row}", { row: i.row })} ·{" "}
+                      {issueText(i, language)}
                     </p>
                   ))}
                   <details>
@@ -177,17 +208,8 @@ export function MaterialEditor({
                     disabled={!!view.table.audit.issues.length}
                     onClick={async () => {
                       try {
-                        const used = custom
-                          ? columnsFor[custom.use].filter(
-                              (k) => custom.columns[k] !== null,
-                            )
-                          : null;
-                        const csv = used
-                          ? tableCSV(
-                              view.table!,
-                              used.map((k) => fieldLabel(custom!.use, k)),
-                              used.map((k) => custom!.columns[k]!),
-                            )
+                        const csv = custom
+                          ? materialCsv({ material: m, view, layout: custom })
                           : tableCSV(view.table!);
                         if (await call("saveMaterial", { csv }))
                           setExportMsg(t("Saved"));
@@ -201,21 +223,7 @@ export function MaterialEditor({
                   {exportMsg}
                 </details>
               )}
-              <p className="help">{view.table.headers.join(" · ")}</p>
-              <label className="sheet">
-                {t("Material meaning")}{" "}
-                <select
-                  value={mode}
-                  onChange={(e) => changeUse(e.target.value as Use | "auto")}
-                >
-                  <option value="auto">{t("Detect from columns")}</option>
-                  {(Object.keys(useNames) as Use[]).map((u) => (
-                    <option key={u} value={u}>
-                      {t(useNames[u])}
-                    </option>
-                  ))}
-                </select>
-              </label>
+
               {custom && (
                 <>
                   {(custom.use === "sales" || custom.use === "lines") && (
@@ -271,6 +279,16 @@ export function MaterialEditor({
                       }
                     />
                     {t("Also read DD/MM/YYYY dates")}
+                  </label>
+                  <label className="sheet">
+                    <input
+                      type="checkbox"
+                      checked={custom.decimalComma === true}
+                      onChange={(e) =>
+                        setCustom({ ...custom, decimalComma: e.target.checked })
+                      }
+                    />
+                    {t("Amounts use a decimal comma (1.234,50 → 1234.50)")}
                   </label>
                   {custom.use === "bank" && (
                     <label className="sheet">

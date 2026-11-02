@@ -1,3 +1,4 @@
+import { reportBinding } from "./number-format";
 import { fieldSpec, isBusiness } from "./catalog";
 import { openSQL, tableCSV } from "./stage";
 import {
@@ -17,7 +18,7 @@ export const materialCsv = (p: Binding) => {
     (k) => p.layout.columns[k] !== null,
   );
   return tableCSV(
-    p.view.table!,
+    reportBinding(p).view.table!,
     isBusiness(p.layout.use)
       ? keys.map(
           (k) => fieldSpec(p.layout.use as import("./catalog").Business)[k],
@@ -36,6 +37,7 @@ export interface SavedSource {
   mapping: Record<string, string | null>;
   description: boolean;
   dayFirst: boolean;
+  decimalComma?: boolean;
 }
 export interface SavedRun {
   template: Kind;
@@ -64,6 +66,7 @@ export async function replay(
     if (!view.table) throw view.error;
     const l = layout(view.table, s.use);
     l.dmy = s.dayFirst;
+    l.decimalComma = s.decimalComma === true;
     l.description = s.description;
     for (const k of Object.keys(l.columns) as (keyof Columns)[]) {
       const name = s.mapping[k],

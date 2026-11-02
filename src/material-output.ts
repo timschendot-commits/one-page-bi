@@ -1,3 +1,4 @@
+import { reportBinding } from "./number-format";
 import { isBusiness, fieldSpec } from "./catalog";
 import { dateValue, raw, identifier } from "./input";
 import { materialCsv } from "./replay";
@@ -46,6 +47,7 @@ export async function archiveChoice(
       .map((k) => (isBusiness(p.layout.use) ? fieldSpec(p.layout.use)[k] : k)),
     preparation: p.view.table!.audit,
     dayFirst: p.layout.dmy,
+    decimalComma: p.layout.decimalComma === true,
     description: p.layout.description,
     mapping: Object.fromEntries(
       Object.entries(p.layout.columns).map(([k, i]) => [
@@ -55,7 +57,7 @@ export async function archiveChoice(
     ),
   }));
   const template = {
-    appVersion: "0.5.0",
+    appVersion: "0.6.0",
     template: choice.kind,
     version: 2,
     language,
@@ -94,7 +96,7 @@ export async function archiveChoice(
       ) as (keyof typeof a.layout.columns)[];
     r.reusable = {
       headers: keys.map((k) => spec[k]),
-      rows: a.view.table!.lines.map((line) =>
+      rows: reportBinding(a).view.table!.lines.map((line) =>
         keys.map((k) => {
           const c = line.cells[a.layout.columns[k]!];
           return k === "date" || spec[k] === "Snapshot date"

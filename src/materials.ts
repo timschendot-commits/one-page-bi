@@ -1,3 +1,5 @@
+import { reportBinding } from "./number-format";
+import { hintName } from "./field-hints";
 import {
   business,
   businessIds,
@@ -5,6 +7,7 @@ import {
   byKind,
   fieldSpec,
   type Business,
+  isQuantityReport,
 } from "./catalog";
 import { businessReport } from "./business-input";
 import {
@@ -25,7 +28,7 @@ import {
   type Report,
 } from "./model";
 import type { Sql } from "sql.js";
-import { preparedSource, wrapWorkbook,issueText } from "./stage";
+import { preparedSource, wrapWorkbook, issueText } from "./stage";
 import { payoutSuggest, preparePayout, type PayoutMap } from "./payout-input";
 import { reconcile } from "./payout-model";
 import { recall, readOptions } from "./mapping-memory";
@@ -48,6 +51,7 @@ export type Columns = Mapping & {
   discount: number | null;
 };
 export interface Layout {
+  decimalComma?: boolean;
   use: Use;
   columns: Columns;
   dmy: boolean;
@@ -156,11 +160,11 @@ function column(headers: string[], aliases: string[]) {
   return hits.length === 1 ? hits[0] : null;
 }
 export function layout(table: Table, use: Use): Layout {
-  const headers = table.headers,
+  const headers = table.headers.map(hintName),
     role = use === "bank" || use === "settlement" ? use : null;
   const base = recall(
     use === "cashflow" ? "cashflow" : "sales",
-    headers,
+    table.headers,
     suggest(headers, use === "cashflow" ? "cashflow" : "sales"),
   );
   const p = role ? payoutSuggest(headers, role) : null;
@@ -245,7 +249,18 @@ export function layout(table: Table, use: Use): Layout {
       ["date", "Date"],
       ["currency", "Currency code"],
     ] as const) {
-      const hits = table.audit.hints.flatMap((h, i) => (h === type ? [i] : []));
+      if (k === "date" && isBusiness(use) && fieldSpec(use).date !== "Date")
+        continue;
+      const hits = table.audit.hints.flatMap((h, i) =>
+        h === type &&
+        !Object.values(cols).includes(i) &&
+        (table.audit!.noHeader ||
+          /^(?:column ?\d+|when|ccy|currency|date|日期|币种)$/i.test(
+            headers[i],
+          ))
+          ? [i]
+          : [],
+      );
       if (cols[k] === null && hits.length === 1) cols[k] = hits[0];
     }
   }
@@ -253,10 +268,10 @@ export function layout(table: Table, use: Use): Layout {
     if (!columnsFor[use].includes(k)) cols[k] = null;
   const saved = table.audit?.noHeader
     ? cols
-    : recall("pool." + use, headers, cols);
+    : recall("pool." + use, table.headers, cols);
   if (table.audit?.noHeader)
     return { use, columns: saved, dmy: false, description: false };
-  const options = readOptions("pool." + use, headers, {
+  const options = readOptions("pool." + use, table.headers, {
     dmy: false,
     description:
       use === "bank" &&
@@ -521,7 +536,7 @@ export function matches(materials: Material[]): Candidate[] {
           continue;
         }
         const tagged = (i: number | null) =>
-          i === null ? "" : keyName(view.table!.headers[i]);
+          i === null ? "" : keyName(hintName(view.table!.headers[i]));
         if (
           !view.manual &&
           (use === "cashflow" || use === "sales") &&
@@ -672,9 +687,10 @@ export function matches(materials: Material[]): Candidate[] {
     string,
     { p: Binding; from: string; to: string; orders: boolean; rows: number }[]
   >();
-  for (const c of output.filter(
+  const singles = output.filter(
     (c) => c.kind === "sales" && c.parts.length === 1 && !c.review,
-  )) {
+  );
+  for (const c of singles.length >= 2 ? singles : []) {
     try {
       const r = compile(c, "Source units");
       if (!isSales(r)) continue;
@@ -754,6 +770,8 @@ function checked(t: Table, c: Columns) {
     problem("Use a different valid column for each field.");
 }
 export function compile(candidate: Candidate, unit: string) {
+  if (candidate.parts.some((p) => p.layout.decimalComma))
+    candidate = { ...candidate, parts: candidate.parts.map(reportBinding) };
   const entities = new Set<string>();
   for (const part of candidate.parts) {
     const tab = part.view.table!;
@@ -824,7 +842,8 @@ export function compile(candidate: Candidate, unit: string) {
   }
   for (const part of candidate.parts) {
     const issue = part.view.table?.audit?.issues.find(
-      (i) => candidate.kind !== "payout" || i.reason!=="Identical to source row",
+      (i) =>
+        candidate.kind !== "payout" || i.reason !== "Identical to source row",
     );
     if (issue)
       throw new LocalizedError(
@@ -833,7 +852,7 @@ export function compile(candidate: Candidate, unit: string) {
           " / " +
           translator(lang)("Row {row}", { row: issue.row }) +
           " · " +
-          issueText(issue,lang),
+          issueText(issue, lang),
       );
   }
   for (const p of candidate.parts) {
@@ -1129,7 +1148,12 @@ export function preflight(c: Candidate): {
   error?: unknown;
 } {
   try {
-    if(isBusiness(c.kind)&&c.kind!=="stock"&&c.parts[0].layout.columns.currency===null)return {state:"confirm"};
+    if (
+      isBusiness(c.kind) &&
+      !isQuantityReport(c.kind) &&
+      c.parts[0].layout.columns.currency === null
+    )
+      return { state: "confirm" };
     let unit = "Source units";
     if (c.kind === "payout" || c.periods) {
       const observed = new Set<string>();

@@ -1,5 +1,23 @@
-import type {Message} from "./i18n";
+import type { Message } from "./i18n";
 export const business = {
+  reorder: {
+    title: "Stock replenishment",
+    material: "Stock thresholds",
+    amount: "Forecast quantity",
+    dimension: "Location",
+  },
+  pipeline: {
+    title: "Open sales pipeline",
+    material: "Open opportunities",
+    amount: "Open deal amount",
+    dimension: "Sales stage",
+  },
+  repeat: {
+    title: "Repeat customers",
+    material: "Customer order lines",
+    amount: "Sales amount",
+    dimension: "Customer",
+  },
   purchase: {
     title: "Purchasing by supplier",
     material: "Vendor invoices",
@@ -124,15 +142,24 @@ export const extraRecipes = byKind(
       guide: "Choose the business report for this material.",
       parts: business[id].material,
       footer:
-        id === "ar" || id === "ap"
-          ? "Aging date is the source snapshot date."
-          : "Keep and verify the original rows for each selected field.",
+        id === "reorder"
+          ? "Quantity needed to reach the target when forecast stock is below the minimum."
+          : id === "pipeline"
+            ? "Open amounts are weighted by their recorded percentage."
+            : id === "repeat"
+              ? "Positive-net orders per customer in the selected rows."
+              : id === "ar" || id === "ap"
+                ? "Aging date is the source snapshot date."
+                : "Keep and verify the original rows for each selected field.",
       definitions: {
         amount: business[id].amount,
         group: business[id].dimension,
       },
     }) as const,
 );
+export function isQuantityReport(id: unknown) {
+  return id === "stock" || id === "reorder";
+}
 export function fieldSpec(id: Business): Record<string, Message> {
   const spec: Record<string, Message> = {
     date: "Date",
@@ -140,8 +167,19 @@ export function fieldSpec(id: Business): Record<string, Message> {
     category: business[id].dimension,
     currency: "Currency",
   };
+  if (id === "repeat") spec.order = "Order ID";
+  if (id === "pipeline") {
+    spec.date = "Snapshot date";
+    spec.order = "Opportunity ID";
+    spec.price = "Win probability (%)";
+    spec.reference = "Opportunity status";
+  }
+  if (id === "reorder") {
+    spec.price = "Minimum quantity";
+    spec.quantity = "Target quantity";
+  }
   if (id === "margin") spec.price = "Cost of goods sold";
-  if (id === "stock") {
+  if (isQuantityReport(id)) {
     spec.date = "Snapshot date";
     spec.order = "SKU";
     spec.reference = "Stock unit";

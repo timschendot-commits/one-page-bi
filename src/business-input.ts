@@ -1,4 +1,9 @@
-import { business, fieldSpec, type Business } from "./catalog";
+import {
+  business,
+  fieldSpec,
+  isQuantityReport,
+  type Business,
+} from "./catalog";
 import type { Binding, Columns } from "./materials";
 import { raw, dateValue, cents, identifier } from "./input";
 import { LocalizedError, errorText } from "./i18n";
@@ -17,6 +22,12 @@ export function businessReport(id: Business, p: Binding, unit: string): Report {
     if (c[k] === null)
       problem("Map " + fieldSpec(id)[k], "请映射 " + fieldSpec(id)[k]);
   }
+  const owners = new Map<string, string>();
+  const outletIndex = tab.headers.findIndex((h) =>
+    ["store", "storeid", "outletid", "店铺", "门店编号", "门店"].includes(
+      h.toLowerCase().replace(/[ _-]/g, ""),
+    ),
+  );
   let sourceUnit = "",
     cutoff = "",
     absolute = 0;
@@ -39,28 +50,26 @@ export function businessReport(id: Business, p: Binding, unit: string): Report {
       let opening: number | undefined,
         credit: number | undefined,
         accountClass: string | undefined;
-      const currency =
-        id === "stock"
-          ? raw(cell("reference"))
-          : c.currency === null
-            ? unit
-            : raw(cell("currency")).toUpperCase();
-      if (!currency || (id !== "stock" && !/^[A-Z]{3}$/.test(currency)))
+      const currency = isQuantityReport(id)
+        ? raw(cell("reference"))
+        : c.currency === null
+          ? unit
+          : raw(cell("currency")).toUpperCase();
+      if (!currency || (!isQuantityReport(id) && !/^[A-Z]{3}$/.test(currency)))
         problem(
           "Confirm one currency or stock unit.",
           "请确认币种或库存单位。",
         );
       if (
         (sourceUnit && currency !== sourceUnit) ||
-        (id !== "stock" && unit !== "Source units" && unit !== currency)
+        (!isQuantityReport(id) && unit !== "Source units" && unit !== currency)
       )
         problem("Mixed or conflicting units.", "单位或币种冲突。");
       sourceUnit = currency;
-      if (id === "stock" || id === "ar" || id === "ap") {
-        const snapshot =
-          id === "stock"
-            ? date
-            : dateValue(cell("reference"), tab.date1904, p.layout.dmy);
+      if (isQuantityReport(id) || id === "ar" || id === "ap") {
+        const snapshot = isQuantityReport(id)
+          ? date
+          : dateValue(cell("reference"), tab.date1904, p.layout.dmy);
         if (cutoff && cutoff !== snapshot)
           problem(
             "Different snapshot dates cannot be added.",
@@ -74,7 +83,7 @@ export function businessReport(id: Business, p: Binding, unit: string): Report {
             "快照库存项或发票重复。",
           );
         seen.add(key);
-        if (id !== "stock") {
+        if (!isQuantityReport(id)) {
           if (amount < 0)
             problem(
               "Handle credits separately from open invoices.",
@@ -149,6 +158,55 @@ export function businessReport(id: Business, p: Binding, unit: string): Report {
           classes.add(accountClass);
         }
       }
+      if (id === "reorder") {
+        const min = cents(cell("price")),
+          target = cents(cell("quantity"));
+        if (min < 0 || target < min)
+          problem(
+            "Target must be at least the nonnegative minimum.",
+            "目标库存不能低于最低库存，最低库存须非负。",
+          );
+        basis = amount;
+        amount = amount < min ? target - amount : 0;
+      }
+      if (id === "repeat") {
+        const identity = JSON.stringify([
+          category,
+          outletIndex < 0 ? null : raw(line.cells[outletIndex]),
+        ]);
+        if (owners.has(order!) && owners.get(order!) !== identity)
+          problem(
+            "An order is assigned to multiple customers or stores.",
+            "同一订单号对应多个客户或门店。",
+          );
+        owners.set(order!, identity);
+      }
+      if (id === "pipeline") {
+        if ((cutoff && cutoff !== date) || seen.has(order!))
+          problem(
+            "Use one snapshot with one row per opportunity.",
+            "同一快照内每个商机须只有一行。",
+          );
+        cutoff = date;
+        seen.add(order!);
+        if (
+          !["open", "active", "在谈", "进行中", "未结"].includes(
+            raw(cell("reference")).toLowerCase(),
+          )
+        )
+          problem(
+            "Use only explicitly open opportunities.",
+            "请只提供明确标记为在谈的商机。",
+          );
+        const pct = cents(cell("price"));
+        if (pct < 0 || pct > 10000 || amount < 0)
+          problem(
+            "Enter a probability from 0 to 100 and a nonnegative deal amount.",
+            "概率须为 0 至 100 的百分数，在谈金额须非负。",
+          );
+        basis = amount;
+        amount = Number((BigInt(amount) * BigInt(pct) + 5000n) / 10000n);
+      }
       if (id === "margin") {
         basis = amount;
         const cost = cents(cell("price"));
@@ -199,7 +257,12 @@ export function businessReport(id: Business, p: Binding, unit: string): Report {
       };
     } catch (e) {
       throw new LocalizedError(
-        (lang) => (lang==="en"?"Row ":"第 ")+line.n+(lang==="en"?"":" 行") + " · " + errorText(e, lang),
+        (lang) =>
+          (lang === "en" ? "Row " : "第 ") +
+          line.n +
+          (lang === "en" ? "" : " 行") +
+          " · " +
+          errorText(e, lang),
       );
     }
   });

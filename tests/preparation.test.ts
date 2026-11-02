@@ -1,4 +1,6 @@
-import {translator,type Message} from "../src/i18n";
+import { materialCsv } from "../src/replay";
+import { missingGuide, sourceCurrency } from "../src/material-guide";
+import { translator, type Message } from "../src/i18n";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -128,6 +130,15 @@ const data: Record<string, string> = {
   "Actual amount": "15",
   "Work order": "WO01",
   "Posted cost": "5",
+  "Forecast quantity": "3",
+  "Minimum quantity": "5",
+  "Target quantity": "10",
+  "Opportunity ID": "OP1",
+  "Open deal amount": "20.10",
+  "Sales stage": "Quoted",
+  "Win probability (%)": "25",
+  "Opportunity status": "Open",
+  "Order ID": "O1",
 };
 for (const id of businessIds)
   test("real recipe path: " + id, () => {
@@ -200,6 +211,9 @@ for (const id of businessIds)
     const kpis = dashboard(r, r.rows, "en").cards;
     assert.equal(kpis.length, 4);
     const expected: Record<string, string> = {
+      reorder: "7.00",
+      pipeline: "20.10",
+      repeat: "0",
       trial: "10.00",
       income: "20.00",
       position: "10.00",
@@ -274,5 +288,110 @@ test("unbalanced statement equations cannot publish", () => {
     "Snapshot date,Closing balance,Account,Currency,Account class\n2026-05-01,99,A,MYR,asset\n2026-05-01,50,L,MYR,liability\n2026-05-01,50,E,MYR,equity";
   assert.throws(() => compile(pick(bs, "position"), "MYR"), /Assets/);
 });
-test("every field rendered by a recipe has an English and Chinese caption",()=>{for(const id of businessIds)for(const label of Object.values(fieldSpec(id))){assert.ok(translator("en")(label));assert.notEqual(translator("zh-CN")(label),label);}assert.equal(translator("zh-CN")("Future label" as Message),"Future label");});
-
+test("every field rendered by a recipe has an English and Chinese caption", () => {
+  for (const id of businessIds)
+    for (const label of Object.values(fieldSpec(id))) {
+      assert.ok(translator("en")(label));
+      assert.notEqual(translator("zh-CN")(label), label);
+    }
+  assert.equal(translator("zh-CN")("Future label" as Message), "Future label");
+});
+test("PSV and Excel sep declaration keep the source row and leading zeroes", () => {
+  const m = item(
+    "sep=|\r\nOrder ID|Date|Sales amount|Currency\r\n007|2026-07-01|10.25|MYR",
+    "fresh.psv",
+  );
+  const c = matches([m]).find((c) => c.kind === "orders")!;
+  assert.equal(sourceCurrency(c), "MYR");
+  const r = compile(c, "MYR");
+  assert.ok(isSales(r));
+  assert.deepEqual(
+    [r.rows[0].row, r.rows[0].order, r.rows[0].cents],
+    [3, "007", 1025],
+  );
+});
+test("JSONL tolerates sparse records and field reorder without rounding numeric identifiers", () => {
+  const m = item(
+    '{"Date":"2026-06-01","Order ID":90071992547409931234,"Sales amount":1.25,"Currency":"MYR"}\n\n{"Currency":"MYR","Sales amount":2.50,"Order ID":"0002","Date":"2026-06-02","note":"x"}',
+    "random.ndjson",
+  );
+  const c = matches([m]).find((o) => o.kind === "orders")!,
+    r = compile(c, "MYR");
+  assert.ok(isSales(r));
+  assert.deepEqual(
+    r.rows.map((x) => [x.row, x.order, x.cents]),
+    [
+      [1, "90071992547409931234", 125],
+      [3, "0002", 250],
+    ],
+  );
+  for (const row of [
+    '{"Date":"x","Date":"y"}',
+    '{"a":{"b":1}}',
+    "[1,2]",
+    '{"a":1,}',
+    '{"a":false}garbage',
+  ]) {
+    const bad = item(row, "x.jsonl");
+    assert.ok(bad.error || bad.views[0]?.error);
+    assert.equal(matches([bad]).length, 0);
+  }
+});
+test("decimal comma is opt-in and changes only mapped numeric fields", () => {
+  const m = item(
+    "Date;Sales amount;Customer;Currency\n2026-05-01;1.234,50;001.234;MYR",
+  );
+  const c = matches([m]).find((o) => o.kind === "customer")!;
+  assert.throws(() => compile(c, "MYR"));
+  c.parts[0].layout.decimalComma = true;
+  const r = compile(c, "MYR");
+  assert.ok(isSales(r));
+  assert.equal(r.rows[0].cents, 123450);
+  assert.equal(r.rows[0].category, "001.234");
+  assert.match(materialCsv(c.parts[0]), /1234.50/);
+  assert.ok(c.parts[0].view.table!.lines[0].cells.includes("1.234,50"));
+});
+test("stock thresholds, open deal weights and positive-net repeat orders are checked per source", () => {
+  const a = pick(
+      "Snapshot date,Location,SKU,Forecast quantity,Minimum quantity,Target quantity,Stock unit\n2026-01-01,N,1,3,5,12,pcs\n2026-01-01,N,2,5,5,10,pcs",
+      "reorder",
+    ),
+    r = compile(a, "Source units");
+  assert.ok(isSales(r));
+  assert.deepEqual(
+    r.rows.map((x) => x.cents),
+    [900, 0],
+  );
+  const txt =
+    "Snapshot date,Sales stage,Opportunity ID,Open deal amount,Win probability (%),Opportunity status,Currency\n2026-01-01,Offer,D1,10.10,25,Open,MYR";
+  const p = compile(pick(txt, "pipeline"), "MYR");
+  assert.ok(isSales(p));
+  assert.equal(p.rows[0].cents, 253);
+  assert.throws(
+    () =>
+      compile(pick(txt.replace(",25,Open", ",125,Open"), "pipeline"), "MYR"),
+    /probability/,
+  );
+  assert.throws(
+    () =>
+      compile(pick(txt.replace(",Open,MYR", ",Won,MYR"), "pipeline"), "MYR"),
+    /open opportunities/,
+  );
+  const data =
+    "Date,Customer ID,Order ID,Sales amount,Currency\n2026-01-01,A,01,20,MYR\n2026-01-02,A,02,9,MYR\n2026-01-02,B,03,7,MYR\n2026-01-02,B,03,-7,MYR";
+  const q = compile(pick(data, "repeat"), "MYR");
+  assert.ok(isSales(q));
+  assert.deepEqual(
+    dashboard(q, q.rows, "en").cards.map((c) => c[1]),
+    ["1", "1", "100.0%", "2"],
+  );
+  assert.throws(
+    () => compile(pick(data.replace("A,02", "B,01"), "repeat"), "MYR"),
+    /multiple customers/,
+  );
+  const guide = missingGuide(
+    [item("Snapshot date,Outstanding,Customer,Currency\n2026-01-01,20,A,MYR")],
+    "ar",
+  );
+  assert.ok(guide[0].missing.includes("Due date"));
+});

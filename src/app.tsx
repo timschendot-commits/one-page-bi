@@ -45,7 +45,7 @@ function App() {
         <div className="brand">
           <Icon kind="cube" size={35} />
           One Page <b>BI</b>
-          <span>V0.5.0</span>
+          <span>V0.6.0</span>
         </div>
         <nav>
           <button

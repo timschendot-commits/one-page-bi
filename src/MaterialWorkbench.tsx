@@ -1,4 +1,9 @@
-import {DialogGuard} from "./DialogGuard";
+import { cellLabel, sourceHeader } from "./input";
+import { RecipeBrowser } from "./RecipeBrowser";
+import { questionFor } from "./questions";
+import { missingGuide, sourceCurrency } from "./material-guide";
+import { isQuantityReport } from "./catalog";
+import { DialogGuard } from "./DialogGuard";
 import {
   business,
   businessIds,
@@ -27,7 +32,6 @@ import {
   compile,
   isSales,
   materialHint,
-  preflight,
   kinds,
   kindTitles,
   useNames,
@@ -96,16 +100,21 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
       () => (product ? thumbnail(product, language) : ""),
       [product, language],
     );
-  const checks = useMemo(
-    () => new Map(options.slice(0, 24).map((c) => [c.id, preflight(c)])),
-    [options],
+  const checked = useMemo(() => {
+    if (!chosen) return;
+    try {
+      return { report: compile(chosen, unit || "Source units") };
+    } catch (error) {
+      return { error };
+    }
+  }, [chosen, unit]);
+  const guide = useMemo(
+    () =>
+      preferred && !options.some((c) => c.kind === preferred)
+        ? missingGuide(pool, preferred)
+        : [],
+    [preferred, pool, options],
   );
-  const checkLabel = (c: Candidate): Message =>
-    checks.get(c.id)?.state === "blocked"
-      ? "Needs correction"
-      : checks.get(c.id)?.state === "ready"
-        ? "Rows checked"
-        : "Review meaning";
   const used = new Set(chosen?.parts.map((p) => p.material.token));
   const choices = filter ? options.filter((c) => c.kind === filter) : options;
   const [listPage, setListPage] = useState(0);
@@ -180,10 +189,10 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
           });
           break;
         }
-        if (!/\.(csv|tsv|xlsx|onepagebi\.html)$/i.test(name))
+        if (!/\.(csv|tsv|psv|jsonl|ndjson|xlsx|onepagebi\.html)$/i.test(name))
           throw new LocalizedError((l) =>
             translator(l)(
-              "Export transaction rows as CSV, TSV or XLSX. Images, PDFs and general HTML cannot supply verified rows.",
+              "Choose CSV, TSV, PSV, XLSX, JSON Lines or a One Page BI report.",
             ),
           );
         const sql = await openSQL();
@@ -252,7 +261,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
     select(c.id);
     setProduct(null);
     setArchive("");
-    setUnit("");
+    setUnit(sourceCurrency(c));
     setErrors([]);
     setNotice(null);
     setModal("review");
@@ -282,17 +291,24 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
     }
   }
   function validateChoice() {
-    if (!chosen) return;
-    const r = compile(chosen, unit || "Source units");
-    setProduct(r);
+    if (!checked?.report) return;
+    setProduct(checked.report);
     setModal("");
     setArchive("");
     setNotice("Ready. Click the output slot to craft your report.");
   }
+  async function generate() {
+    if (!chosen || !checked?.report) return;
+    await save(chosen, checked.report);
+    setModal("");
+  }
   async function craft() {
     if (!chosen || !product) return;
-    const r = { ...product, created: new Date().toISOString() };
-    const id = await archiveChoice(chosen, r, language);
+    await save(chosen, product);
+  }
+  async function save(choice: Candidate, ready: Product) {
+    const r = { ...ready, created: new Date().toISOString() };
+    const id = await archiveChoice(choice, r, language);
     setArchive(id);
     setProduct(r);
     setNotice("Report saved. Drag it into the inventory for a desktop copy.");
@@ -382,12 +398,29 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
       </aside>
       <section className="bench">
         <h1>{t("Report workbench")}</h1>
+        <ol className="craft-steps">
+          {(["Drop files", "Choose report", "Get report"] as const).map(
+            (label, i) => (
+              <li
+                key={label}
+                aria-current={
+                  i === (archive || product ? 2 : pool.length ? 1 : 0)
+                    ? "step"
+                    : undefined
+                }
+              >
+                <b>{i + 1}</b>
+                {t(label)}
+              </li>
+            ),
+          )}
+        </ol>
         <input
           ref={picker}
           type="file"
           multiple
           hidden
-          accept=".csv,.tsv,.xlsx,.onepagebi.html"
+          accept=".csv,.tsv,.psv,.jsonl,.ndjson,.xlsx,.onepagebi.html"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
             e.target.value = "";
@@ -560,7 +593,34 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
         {!modal && feedback}
       </section>
       <section className="preview">
-        <h2>{t(product ? "Report preview" : "Matching reports")}</h2>
+        <h2>{t(product ? "Report preview" : "You can make")}</h2>
+        {!!guide.length && preferred && (
+          <div className="missing-guide">
+            <b>{t(kindTitles[preferred])}</b>
+            {guide.map(({ part, missing }) => (
+              <div
+                key={part.material.token + part.view.sheet + part.layout.use}
+              >
+                <small>
+                  {describe(part)} · {t(useNames[part.layout.use])}
+                </small>
+                <span>
+                  {missing.length
+                    ? t("Still needed") +
+                      " · " +
+                      missing.map((k) => t(k)).join(", ")
+                    : t(materialHint(part.view))}
+                </span>
+                <button
+                  className="textbtn"
+                  onClick={() => edit(part.material, part)}
+                >
+                  {t("Use this file")}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {product ? (
           <>
             <div className="displayframe">
@@ -594,25 +654,18 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
                 >
                   <Icon kind="chart" size={22} />
                   <span>
-                    {t(kindTitles[k])}
+                    {t(questionFor[k])}
                     <small>
-                      {t(
-                        options.some(
-                          (c) =>
-                            c.kind === k && checks.get(c.id)?.state === "ready",
-                        )
-                          ? "Rows checked"
-                          : options
-                                .filter((c) => c.kind === k)
-                                .every(
-                                  (c) => checks.get(c.id)?.state === "blocked",
-                                )
-                            ? "Needs correction"
-                            : "Review meaning",
-                      )}
+                      {t(kindTitles[k])} ·{" "}
+                      {count(k) === 1
+                        ? options
+                            .find((c) => c.kind === k)!
+                            .parts.map(describe)
+                            .join(" + ")
+                        : t("{count} combinations", { count: count(k) })}
                     </small>
                   </span>
-                  <b>{count(k)}</b>
+                  <b aria-hidden="true">›</b>
                 </button>
               ))}
             <small>
@@ -639,7 +692,10 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
           <p className="help">
             {pool.map((m) => (
               <span key={m.token} className="material-hint">
-                {m.name} ·{" "}
+                <button className="textbtn" onClick={() => edit(m)}>
+                  {m.name}
+                </button>{" "}
+                ·{" "}
                 {m.views[0]?.table
                   ? t(materialHint(m.views[0]))
                   : t(
@@ -715,259 +771,360 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
         }
         onResultDrop={(value) => void run(() => put(value))}
       />
-      {modal && <DialogGuard key={modal+selection} close={()=>setModal("")} language={language} render={()=> <>
-      {modal === "matches" && (
-        <Modal title={t("Choose a report")} onClose={() => setModal("")}>
-          <label className="sheet">
-            {t("Report type")}{" "}
-            <select
-              value={filter ?? ""}
-              onChange={(e) => {
-                setFilter((e.target.value as Kind) || null);
-                setListPage(0);
-              }}
-            >
-              <option value="">{t("All report types")}</option>
-              {kinds.map((k) => (
-                <option key={k} value={k}>
-                  {t(kindTitles[k])} ({count(k)})
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="candidate-list">
-            {choices.slice(page * perPage, (page + 1) * perPage).map((c) => (
-              <button key={c.id} onClick={() => begin(c)}>
-                <div>
-                  <b>{t(kindTitles[c.kind])}</b>
-                  <small>
-                    {t(checkLabel(c))} ·{" "}
-                    {c.parts
-                      .map(
-                        (p) => t(useNames[p.layout.use]) + " · " + describe(p),
-                      )
-                      .join(" + ")}
-                  </small>
-                  {c.review && (
-                    <small>
-                      {t("Confirm the business meaning of this amount.")}
-                    </small>
+      {modal && (
+        <DialogGuard
+          key={modal + selection}
+          close={() => setModal("")}
+          language={language}
+          render={() => (
+            <>
+              {modal === "matches" && (
+                <Modal
+                  title={t("Choose a report")}
+                  onClose={() => setModal("")}
+                >
+                  <label className="sheet">
+                    {t("Report type")}{" "}
+                    <select
+                      value={filter ?? ""}
+                      onChange={(e) => {
+                        setFilter((e.target.value as Kind) || null);
+                        setListPage(0);
+                      }}
+                    >
+                      <option value="">{t("All report types")}</option>
+                      {kinds.map((k) => (
+                        <option key={k} value={k}>
+                          {t(kindTitles[k])} ({count(k)})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="candidate-list">
+                    {choices
+                      .slice(page * perPage, (page + 1) * perPage)
+                      .map((c) => (
+                        <button key={c.id} onClick={() => begin(c)}>
+                          <div>
+                            <b>{t(kindTitles[c.kind])}</b>
+                            <small>
+                              {t("Confirmed after you choose")} ·{" "}
+                              {c.parts
+                                .map(
+                                  (p) =>
+                                    t(useNames[p.layout.use]) +
+                                    " · " +
+                                    describe(p),
+                                )
+                                .join(" + ")}
+                            </small>
+                            {c.review && !isBusiness(c.kind) && (
+                              <small>
+                                {t(
+                                  "Confirm the business meaning of this amount.",
+                                )}
+                              </small>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                  {choices.length > perPage && (
+                    <div className="pager">
+                      <button
+                        disabled={!page}
+                        onClick={() => setListPage(page - 1)}
+                      >
+                        ‹
+                      </button>
+                      {page + 1}/{Math.ceil(choices.length / perPage)}
+                      <button
+                        disabled={(page + 1) * perPage >= choices.length}
+                        onClick={() => setListPage(page + 1)}
+                      >
+                        ›
+                      </button>
+                    </div>
                   )}
-                </div>
-              </button>
-            ))}
-          </div>
-          {choices.length > perPage && (
-            <div className="pager">
-              <button disabled={!page} onClick={() => setListPage(page - 1)}>
-                ‹
-              </button>
-              {page + 1}/{Math.ceil(choices.length / perPage)}
-              <button
-                disabled={(page + 1) * perPage >= choices.length}
-                onClick={() => setListPage(page + 1)}
-              >
-                ›
-              </button>
-            </div>
-          )}
-        </Modal>
-      )}
-      {modal === "review" && chosen && (
-        <Modal title={t(kindTitles[chosen.kind])} onClose={() => setModal("")}>
-          <p>
-            {t(
-              chosen.periods
-                ? "Combine the selected disjoint periods using one currency."
-                : kindsText[chosen.kind],
-            )}
-          </p>
-          {chosen.periods && (
-            <p className="help">
-              {t(
-                "Confirm these periods cover the same business and use the same sales definition.",
+                </Modal>
               )}
-            </p>
-          )}
-          {chosen.review && !chosen.periods && (
-            <p className="feedback good">
-              {t("Confirm the business meaning of this amount.")}
-            </p>
-          )}
-          {checks.get(chosen.id)?.state === "blocked" && !errors.length && (
-            <p className="feedback bad">
-              {errorText(checks.get(chosen.id)!.error, language)}
-            </p>
-          )}
-          {chosen.parts.map((p) => (
-            <div
-              className="source-binding"
-              key={p.material.token + p.view.sheet}
-            >
-              <strong>{describe(p)}</strong>
-              <small>
-                {t(useNames[p.layout.use])} · {p.view.table!.lines.length}{" "}
-                {t("Row")}
-              </small>
-              <p>
-                {columnsFor[p.layout.use]
-                  .filter((k) => p.layout.columns[k] !== null)
-                  .map(
-                    (k) =>
-                      t(fieldLabel(p.layout.use, k)) +
-                      " ← " +
-                      p.view.table!.headers[p.layout.columns[k]!],
-                  )
-                  .join(" · ")}
-              </p>
-              <button className="textbtn" onClick={() => edit(p.material, p)}>
-                {t("Review columns")}
-              </button>
-            </div>
-          ))}
-          {chosen.parts.some(
-            (p) =>
-              p.layout.columns.quantity !== null &&
-              p.layout.columns.amount === null,
-          ) && (
-            <p className="help">
-              {t(
-                "Derived line value: whole quantity × unit price − absolute line discount. Confirm the tax and return treatment.",
-              )}
-            </p>
-          )}
-          {chosen.kind === "stock" ? (
-            <p>
-              {t("Stock unit")} · {t("Source units")}
-            </p>
-          ) : (
-            <label className="sheet">
-              {t(chosen.kind === "payout" ? "Common currency" : "Amount unit")}{" "}
-              <select
-                value={unit}
-                onChange={(e) => {
-                  setUnit(e.target.value);
-                  setProduct(null);
-                  setArchive("");
-                  setErrors([]);
-                }}
-              >
-                <option value="">
-                  {t(
-                    chosen.kind === "payout" || chosen.periods
-                      ? "Confirm currency"
-                      : "Source units",
+              {modal === "review" && chosen && (
+                <Modal
+                  title={t(kindTitles[chosen.kind])}
+                  onClose={() => setModal("")}
+                >
+                  <h3 className="review-question">
+                    {t(questionFor[chosen.kind])}
+                  </h3>
+                  <p>
+                    {t(
+                      chosen.periods
+                        ? "Combine the selected disjoint periods using one currency."
+                        : kindsText[chosen.kind],
+                    )}
+                  </p>
+                  {chosen.periods && (
+                    <p className="help">
+                      {t(
+                        "Confirm these periods cover the same business and use the same sales definition.",
+                      )}
+                    </p>
                   )}
-                </option>
-                {["MYR", "CNY", "USD", "SGD", "EUR", "GBP", "AUD", "HKD"].map(
-                  (k) => (
-                    <option key={k}>{k}</option>
-                  ),
-                )}
-              </select>
-            </label>
+                  {chosen.review &&
+                    !chosen.periods &&
+                    !isBusiness(chosen.kind) && (
+                      <p className="feedback good">
+                        {t("Confirm the business meaning of this amount.")}
+                      </p>
+                    )}
+                  {checked && "error" in checked && !errors.length && (
+                    <p className="feedback bad">
+                      {errorText(checked.error, language)}
+                    </p>
+                  )}
+                  <h4 className="files-heading">
+                    {t("Files for this report")}
+                  </h4>
+                  {chosen.parts.map((p) => (
+                    <div
+                      className="source-binding"
+                      key={p.material.token + p.view.sheet}
+                    >
+                      <strong>{describe(p)}</strong>
+                      <small>
+                        {t(useNames[p.layout.use])} ·{" "}
+                        {p.view.table!.lines.length} {t("Rows")}
+                      </small>
+                      <details className="source-fields">
+                        <summary>{t("Source columns")}</summary>
+                        <div className="sample-scroll">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>{t("Field used")}</th>
+                                <th>{t("Original column")}</th>
+                                <th>{t("Example")}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {columnsFor[p.layout.use]
+                                .filter((k) => p.layout.columns[k] !== null)
+                                .map((k) => {
+                                  const i = p.layout.columns[k]!;
+                                  return (
+                                    <tr key={k}>
+                                      <td>{t(fieldLabel(p.layout.use, k))}</td>
+                                      <td>{sourceHeader(p.view.table!, i)}</td>
+                                      <td>
+                                        {cellLabel(
+                                          p.view.table!.lines[0]?.cells[i],
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                      {p.layout.decimalComma && (
+                        <small>
+                          {t(
+                            "Amounts use a decimal comma (1.234,50 → 1234.50)",
+                          )}
+                        </small>
+                      )}
+                      <button
+                        className="textbtn"
+                        onClick={() => edit(p.material, p)}
+                      >
+                        {t("Review columns")}
+                      </button>
+                    </div>
+                  ))}
+                  {chosen.parts.some(
+                    (p) =>
+                      p.layout.columns.quantity !== null &&
+                      p.layout.columns.amount === null,
+                  ) && (
+                    <p className="help">
+                      {t(
+                        "Derived line value: whole quantity × unit price − absolute line discount. Confirm the tax and return treatment.",
+                      )}
+                    </p>
+                  )}
+                  {isQuantityReport(chosen.kind) ? (
+                    <p>
+                      {t("Stock unit")} · {t("Source units")}
+                    </p>
+                  ) : (
+                    <label className="sheet">
+                      {t(
+                        chosen.kind === "payout"
+                          ? "Common currency"
+                          : "Amount unit",
+                      )}{" "}
+                      <select
+                        value={unit}
+                        onChange={(e) => {
+                          setUnit(e.target.value);
+                          setProduct(null);
+                          setArchive("");
+                          setErrors([]);
+                        }}
+                      >
+                        <option value="">
+                          {t(
+                            chosen.kind === "payout" || chosen.periods
+                              ? "Confirm currency"
+                              : "Source units",
+                          )}
+                        </option>
+                        {[
+                          ...new Set([
+                            "MYR",
+                            "CNY",
+                            "USD",
+                            "SGD",
+                            "EUR",
+                            "GBP",
+                            "AUD",
+                            "HKD",
+                            ...(unit ? [unit] : []),
+                          ]),
+                        ].map((k) => (
+                          <option key={k}>{k}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {feedback}
+                  <div className="modalactions">
+                    <button
+                      disabled={!checked?.report}
+                      onClick={() => run(async () => validateChoice())}
+                    >
+                      {t("Preview first")}
+                    </button>
+                    <button
+                      className="primary"
+                      disabled={!checked?.report}
+                      onClick={() => run(generate)}
+                    >
+                      {t("Generate report")}
+                    </button>
+                  </div>
+                </Modal>
+              )}
+              {modal === "edit" && editor && (
+                <MaterialEditor
+                  key={editor.m.token}
+                  material={editor.m}
+                  initial={editor.p?.view}
+                  initialLayout={editor.p?.layout}
+                  onClose={() => {
+                    setEditor(null);
+                    setModal(chosen ? "review" : "");
+                  }}
+                  onSave={(v) => {
+                    void run(async () => {
+                      const views = [
+                        ...editor.m.views.filter((x) => x.sheet !== v.sheet),
+                        v,
+                      ];
+                      await call("stageMaterial", {
+                        token: editor.m.token,
+                        tables: JSON.stringify(
+                          views
+                            .filter((x) => x.table)
+                            .map((x) => ({
+                              sheet: x.sheet,
+                              csv: tableCSV(x.table!),
+                              audit: x.table!.audit,
+                            })),
+                        ),
+                      });
+                      setPool((old) =>
+                        old.map((m) =>
+                          m.token === editor.m.token
+                            ? {
+                                ...m,
+                                views: [
+                                  ...m.views.filter((x) => x.sheet !== v.sheet),
+                                  v,
+                                ],
+                              }
+                            : m,
+                        ),
+                      );
+                      reset();
+                      setEditor(null);
+                    });
+                  }}
+                  onRemove={() =>
+                    void run(async () => {
+                      await call("materialRemove", { token: editor.m.token });
+                      setPool((old) =>
+                        old.filter((x) => x.token !== editor.m.token),
+                      );
+                      reset();
+                      setEditor(null);
+                    })
+                  }
+                />
+              )}
+              {modal === "preview" && (
+                <Modal
+                  title={t(kindTitles[chosen!.kind])}
+                  onClose={() => setModal("")}
+                >
+                  <img
+                    className="largepreview"
+                    src={thumb}
+                    alt={t("Report preview")}
+                  />
+                </Modal>
+              )}
+              {(modal === "recipe" || modal === "parts") && (
+                <Modal
+                  title={t(modal === "recipe" ? "Recipe" : "Parts")}
+                  onClose={() => setModal("")}
+                >
+                  {modal === "recipe" ? (
+                    <RecipeBrowser
+                      choose={(k) => {
+                        setModal("");
+                        pickTemplate(k);
+                      }}
+                    />
+                  ) : (
+                    <div className="parts-list">
+                      {Object.entries(useNames)
+                        .filter(([k]) => !isBusiness(k))
+                        .map(([u, name]) => (
+                          <p key={u}>
+                            <b>{t(name)}</b>
+                            <br />
+                            {columnsFor[u as keyof typeof columnsFor]
+                              .map((k) =>
+                                t(fieldLabel(u as keyof typeof columnsFor, k)),
+                              )
+                              .join(" · ")}
+                          </p>
+                        ))}
+                    </div>
+                  )}
+                  <p className="help">
+                    {t(
+                      "Drop up to nine materials. Only selected inputs are archived.",
+                    )}
+                  </p>
+                </Modal>
+              )}
+            </>
           )}
-          {feedback}
-          <div className="modalactions">
-            <button
-              className="primary"
-              onClick={() => run(async () => validateChoice())}
-            >
-              {t("Confirm and validate")}
-            </button>
-          </div>
-        </Modal>
-      )}
-      {modal === "edit" && editor && (
-        <MaterialEditor
-          key={editor.m.token}
-          material={editor.m}
-          initial={editor.p?.view}
-          initialLayout={editor.p?.layout}
-          onClose={() => {
-            setEditor(null);
-            setModal(chosen ? "review" : "");
-          }}
-          onSave={(v) => {
-            void run(async () => {
-              const views = [
-                ...editor.m.views.filter((x) => x.sheet !== v.sheet),
-                v,
-              ];
-              await call("stageMaterial", {
-                token: editor.m.token,
-                tables: JSON.stringify(
-                  views
-                    .filter((x) => x.table)
-                    .map((x) => ({
-                      sheet: x.sheet,
-                      csv: tableCSV(x.table!),
-                      audit: x.table!.audit,
-                    })),
-                ),
-              });
-              setPool((old) =>
-                old.map((m) =>
-                  m.token === editor.m.token
-                    ? {
-                        ...m,
-                        views: [
-                          ...m.views.filter((x) => x.sheet !== v.sheet),
-                          v,
-                        ],
-                      }
-                    : m,
-                ),
-              );
-              reset();
-              setEditor(null);
-            });
-          }}
-          onRemove={() =>
-            void run(async () => {
-              await call("materialRemove", { token: editor.m.token });
-              setPool((old) => old.filter((x) => x.token !== editor.m.token));
-              reset();
-              setEditor(null);
-            })
-          }
         />
       )}
-      {modal === "preview" && (
-        <Modal title={t(kindTitles[chosen!.kind])} onClose={() => setModal("")}>
-          <img className="largepreview" src={thumb} alt={t("Report preview")} />
-        </Modal>
-      )}
-      {(modal === "recipe" || modal === "parts") && (
-        <Modal
-          title={t(modal === "recipe" ? "Recipe" : "Parts")}
-          onClose={() => setModal("")}
-        >
-          {kinds.map((k) => (
-            <p key={k}>
-              <button
-                onClick={() => {
-                  setModal("");
-                  pickTemplate(k);
-                }}
-              >
-                {t(kindTitles[k])}
-              </button>
-              <br />
-              {t(kindsText[k])}
-              {isBusiness(k) &&
-                " · " +
-                  Object.values(fieldSpec(k))
-                    .map((v) => t(v as Message))
-                    .join(" / ")}
-            </p>
-          ))}
-          <p className="help">
-            {t("Drop up to nine materials. Only selected inputs are archived.")}
-          </p>
-        </Modal>
-      )}
-    </>}/>}
     </div>
   );
 }

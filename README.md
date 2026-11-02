@@ -1,12 +1,20 @@
-# One Page BI V0.5.0 · Local Windows milestone
+# One Page BI V0.6.0 · Local Windows milestone
 
 English · [简体中文](README.zh-CN.md)
 
-## New in this version
+## Make a report in three steps
+
+1. Open the inventory's **Examples** folder and add **Reorder-check.psv** to the grid.
+2. Choose **Which items need replenishment?** The review shows exactly which files and original columns are used. One position needs 9 pieces and another needs 6. The position at its minimum needs zero.
+3. Choose **Generate report** to validate and archive, or **Preview first**. Use History to inspect the staged data.
+
+V0.6 fixes a Chinese label crash in recipe selection, moves full report validation to the selected combination, and adds searchable business questions, missing-field guidance, and stock replenishment, repeat customer and open sales pipeline reports. The example **Open-deals.jsonl** contains MYR 3,234.50 in open deals and MYR 1,993.80 in probability-weighted value. Flat JSON Lines (.jsonl and .ndjson), pipe-separated .psv and Excel separator declarations are supported. An explicit per-material decimal-comma option converts mapped numeric columns only. Its interpretation is recorded in the archive for replay.
+
+## Preparing data
 
 Drop a CSV, TSV, XLSX or prepared BI report into the square workbench. Open the material to see the SQL result, the first source rows, the presentation rules and the suggested column types. UTF-8 and BOM-marked UTF-16 delimited files can use commas, tabs, semicolons or pipes. Files are identified by structure and values. If there are no headers, the material keeps the first row and shows numbered columns. Choose a meaning and map ambiguous columns yourself. Check the suggested start row, especially when a file contains a cover note. Excel imports retain typed date and ID information.
 
-The **Recipe catalog** contains 21 runnable report types. The four original recipes are joined by sales by customer, SKU, channel or store, purchasing by supplier, expenses, gross profit, stock on hand, receivables aging, payables aging, project billing, posted work-order cost, journal movements, trial balance roll-forward, income and expense statement, balance sheet check, and budget versus actual. Cross-period merging is also available for compatible sales materials. Sector coverage and source conventions are described in [Report rules and verification](REPORT-RULES.md).
+The **Recipe catalog** contains 24 runnable report types. The four original recipes are joined by sales by customer, SKU, channel or store, purchasing by supplier, expenses, gross profit, stock on hand, receivables aging, payables aging, project billing, posted work-order cost, journal movements, trial balance roll-forward, income and expense statement, balance sheet check, and budget versus actual. Cross-period merging is also available for compatible sales materials. Sector coverage and source conventions are described in [Report rules and verification](REPORT-RULES.md).
 
 Before crafting, safe changes include trimming whitespace, standardizing known labels, ordering fields and removing blank rows and exact repeated headers. Original row numbers and input bytes remain available. Data rows are never filled forward or silently deduplicated. Suspicious duplicates block aggregates. The payout exception report can retain duplicate rows as evidence without confirming them as receipts. Ambiguous dates, mixed entities, status issues, conflicting units and failed accounting checks require correction. Data suppliers remain responsible for completeness and business meaning.
 
@@ -18,9 +26,9 @@ Drop the files you have onto the nine-slot workbench. One Page BI inspects their
 
 ## Start and try the joined-order example
 
-1. Extract **OnePageBI-V0.5.0-local-Windows-x64.zip** and run **OnePageBI.exe**. Keep its DLLs, `ui`, `licenses` and `examples` together. Requires Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+1. Extract **OnePageBI-V0.6.0-local-Windows-x64.zip** and run **OnePageBI.exe**. Keep its DLLs, `ui`, `licenses` and `examples` together. Requires Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 2. The square inventory opens on your Desktop. Choose **Examples** from its location menu. Hold Ctrl and select **Order-headers-demo.csv**, **Order-items-demo.tsv**, **Payouts-demo.csv** and **Bank-demo.csv**. Drag the group to the grid, or choose **Add selected**. You can also drop files from Explorer, click an empty slot to browse, or click an inventory data file to load it.
-3. The right side lists possible report types, even if you previously chose a different template. Select **Order analysis**. Check which source supplies each field, then select **MYR** and **Confirm and validate**. Only the two order files participate. Unused materials stay on the grid for the next recipe.
+3. The right side lists possible report types, even if you previously chose a different template. Select **Order analysis**. Check which source supplies each field, then check **MYR** and select **Preview first**. Only the two order files participate. Unused materials stay on the grid for the next recipe.
 4. Click **Craft** in the output slot. The synthetic example gives **MYR 125.00**, **2** orders and **MYR 62.50** average order value. Open the interactive report, filter it, or export a PNG. Drag the finished item into the inventory (or choose **To inventory**) for a standalone Desktop copy. Choose **Change selection** to use the same materials again.
 
 ## What each report can use
