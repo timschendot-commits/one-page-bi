@@ -818,3 +818,25 @@ dialog:has(.largepreview) {
   outline: 2px solid #317347;
   outline-offset: -3px;
 }
+.audit {
+  margin: 0.65rem 0;
+}
+.sample-scroll {
+  max-height: 165px;
+  overflow: auto;
+  margin: 0.4rem 0;
+}
+.sample-scroll table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.sample-scroll td,
+.sample-scroll th {
+  border: 1px solid #969e8c;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+.sample-scroll small {
+  display: block;
+  font-weight: normal;
+}

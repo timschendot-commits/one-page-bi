@@ -21,7 +21,7 @@ public static class TestDialog {
       var cls=new StringBuilder(100);GetClassName(h,cls,100);
       if(cls.ToString()!="Edit" || !IsWindowVisible(h))return true;
       var value=new StringBuilder(2048);SendMessage(h,13,(IntPtr)value.Capacity,value);
-      if(!value.ToString().EndsWith(".png",StringComparison.OrdinalIgnoreCase))return true;
+      if(!value.ToString().EndsWith(System.IO.Path.GetExtension(target),StringComparison.OrdinalIgnoreCase))return true;
       field=h;return false;
     },IntPtr.Zero);
     if(field==IntPtr.Zero)return false;

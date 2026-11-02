@@ -1,4 +1,7 @@
-import { type Candidate, compile, isSales } from "./materials";
+import { isBusiness, fieldSpec } from "./catalog";
+import { dateValue, raw, identifier } from "./input";
+import { materialCsv } from "./replay";
+import { columnsFor, type Candidate, compile, isSales } from "./materials";
 import { call } from "./bridge";
 import { paint } from "./chart";
 import { standalone } from "./report-html";
@@ -35,6 +38,13 @@ export async function archiveChoice(
           : p.layout.columns.debit !== null
             ? "credit - debit"
             : undefined,
+    exportFields: columnsFor[p.layout.use].filter(
+      (k) => p.layout.columns[k] !== null,
+    ),
+    exportLabels: columnsFor[p.layout.use]
+      .filter((k) => p.layout.columns[k] !== null)
+      .map((k) => (isBusiness(p.layout.use) ? fieldSpec(p.layout.use)[k] : k)),
+    preparation: p.view.table!.audit,
     dayFirst: p.layout.dmy,
     description: p.layout.description,
     mapping: Object.fromEntries(
@@ -45,7 +55,7 @@ export async function archiveChoice(
     ),
   }));
   const template = {
-    appVersion: "0.4.0",
+    appVersion: "0.5.0",
     template: choice.kind,
     version: 2,
     language,
@@ -77,6 +87,25 @@ export async function archiveChoice(
             ]),
           ),
   };
+  if (isSales(r) && isBusiness(choice.kind)) {
+    const spec = fieldSpec(choice.kind),
+      keys = Object.keys(spec).filter(
+        (k) => a.layout.columns[k as keyof typeof a.layout.columns] !== null,
+      ) as (keyof typeof a.layout.columns)[];
+    r.reusable = {
+      headers: keys.map((k) => spec[k]),
+      rows: a.view.table!.lines.map((line) =>
+        keys.map((k) => {
+          const c = line.cells[a.layout.columns[k]!];
+          return k === "date" || spec[k] === "Snapshot date"
+            ? dateValue(c, a.view.table!.date1904, a.layout.dmy)
+            : k === "order" || k === "category"
+              ? identifier(c)
+              : raw(c);
+        }),
+      ),
+    };
+  }
   const id = await call<string>("archive", {
     recipe: choice.kind,
     materialToken: a.material.token,
@@ -85,6 +114,8 @@ export async function archiveChoice(
       : {}),
     ...(b ? { secondToken: b.material.token } : {}),
     template: JSON.stringify(template, null, 2),
+    stageSheets: JSON.stringify(choice.parts.map((p) => p.view.sheet)),
+    materials: JSON.stringify(choice.parts.map(materialCsv)),
     processed: JSON.stringify(
       isSales(r)
         ? { schemaVersion: 2, unit: r.unit, amountField: "cents", rows: r.rows }

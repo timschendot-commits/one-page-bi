@@ -1,3 +1,4 @@
+import {business,isBusiness} from "./catalog";
 import { recipes, dashboard } from "./recipes";
 import { metrics, money, type Report } from "./model";
 import { paint } from "./chart";
@@ -28,7 +29,7 @@ function localize() {
   document.documentElement.lang = language;
   document.title = t(recipes[r.recipe ?? "sales"].title) + " · One Page BI";
   document.getElementById("month-label")!.textContent = t("Month");
-  document.getElementById("category-label")!.textContent = t("Category");
+  document.getElementById("category-label")!.textContent = t(isBusiness(r.recipe)?business[r.recipe].dimension:"Category");
   month.options[0].text = t("All months");
   category.options[0].text = r.hasCategories
     ? t("All categories")

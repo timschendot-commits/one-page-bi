@@ -1,7 +1,10 @@
+import { extraRecipes, isBusiness } from "./catalog";
+import { businessDashboard } from "./business-view";
 import { definitions, metrics, money, type Report, type Sale } from "./model";
 import { translator, type Language, type Message } from "./i18n";
 
 export const recipes = {
+  ...extraRecipes,
   sales: {
     name: "Sales",
     title: "Sales overview",
@@ -136,6 +139,7 @@ export function dashboard(
   rows: Sale[],
   lang: Language,
 ): { cards: [string, string][]; panels: [Panel, Panel] } {
+  if (isBusiness(r.recipe)) return businessDashboard(r.recipe, r, rows, lang);
   const t = translator(lang),
     m = metrics(rows, r.hasOrders),
     amount = (v: number) => money(v, lang);

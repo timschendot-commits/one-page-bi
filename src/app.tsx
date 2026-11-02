@@ -1,3 +1,4 @@
+import { ArchiveReview } from "./ArchiveReview";
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { call, type History } from "./bridge";
@@ -31,6 +32,7 @@ function App() {
       setError(e);
     }
   }
+  const [review, setReview] = useState("");
   const refreshHistory = async () => setHistory(await call<History>("history"));
   const action = (method: string, archiveId: string) =>
     run(async () => {
@@ -43,7 +45,7 @@ function App() {
         <div className="brand">
           <Icon kind="cube" size={35} />
           One Page <b>BI</b>
-          <span>V0.4.0</span>
+          <span>V0.5.0</span>
         </div>
         <nav>
           <button
@@ -120,6 +122,9 @@ function App() {
                       <button onClick={() => action("exportPng", h.id)}>
                         {t("Save summary PNG")}
                       </button>
+                      <button onClick={() => setReview(h.id)}>
+                        {t("Review staging and verify")}
+                      </button>
                       <button onClick={() => action("archiveFolder", h.id)}>
                         {t("Show folder")}
                       </button>
@@ -136,6 +141,7 @@ function App() {
             </section>
           </>
         )}
+        {review && <ArchiveReview id={review} close={() => setReview("")} />}
       </main>
     </>
   );

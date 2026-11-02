@@ -15,6 +15,7 @@ import {
 type Cell = string | XLSX.CellObject | undefined;
 type Line = { n: number; cells: Cell[] };
 export interface Table {
+  audit?: import("./stage").Audit;
   headers: string[];
   lines: Line[];
   sheet: string;
@@ -22,7 +23,8 @@ export interface Table {
 }
 export interface Source {
   sheets: string[];
-  table: (sheet: string, headerRow?: number) => Table;
+  suggest?: (sheet: string) => { row: number; noHeader: boolean };
+  table: (sheet: string, headerRow?: number, noHeader?: boolean) => Table;
 }
 const limit = 10000,
   width = 80;
@@ -149,7 +151,27 @@ export function readSource(bytes: Uint8Array, name: string): Source {
   if (!sheets.length) fail("The workbook has no readable visible worksheet.");
   return {
     sheets,
-    table: (sheet: string, headerRow = 1) => {
+    suggest: (sheet) => {
+      const ws = wb.Sheets[sheet];
+      const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+      for (let r = range.s.r; r <= Math.min(49, range.e.r); r++) {
+        const cells = Array.from(
+          { length: Math.min(80, range.e.c + 1) },
+          (_, c) => ws[XLSX.utils.encode_cell({ r, c })],
+        ).filter((c) => c && String(c.v ?? "").trim());
+        if (cells.length > 1)
+          return {
+            row: r + 1,
+            noHeader: cells.some(
+              (c) =>
+                c.t === "n" ||
+                /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(String(c.v)),
+            ),
+          };
+      }
+      return { row: 1, noHeader: false };
+    },
+    table: (sheet: string, headerRow = 1, noHeader = false) => {
       if (!sheets.includes(sheet)) fail("Choose a visible worksheet.");
       const ws = wb.Sheets[sheet],
         ref = ws["!ref"];
@@ -173,6 +195,17 @@ export function readSource(bytes: Uint8Array, name: string): Source {
         for (let c = 0; c <= range.e.c; c++)
           cells.push(ws[XLSX.utils.encode_cell({ r, c })]);
         lines.push({ n: r + 1, cells });
+      }
+      if (noHeader) {
+        const rows = lines.filter((l) => l.cells.some((c) => !blank(c)));
+        if (!rows.length || rows.length > limit)
+          fail("The table exceeds 80 columns or 10,000 data rows.");
+        return {
+          headers: lines[0].cells.map((_, i) => "Column " + (i + 1)),
+          lines: rows,
+          sheet,
+          date1904: Boolean(wb.Workbook?.WBProps?.date1904),
+        };
       }
       return table(
         lines,
@@ -206,6 +239,12 @@ export function dateValue(cell: Cell, date1904: boolean, dayFirst = false) {
   }
   const dmy = dayFirst && /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
   if (dmy) return ymd(+dmy[3], +dmy[2], +dmy[1]);
+  // A local wall-clock timestamp retains its recorded calendar day. Offsets require a timezone policy.
+  const localStamp =
+    /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})[ T]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.exec(
+      s,
+    );
+  if (localStamp) return ymd(+localStamp[1], +localStamp[3], +localStamp[4]);
   const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(s);
   if (!match) return fail("Use YYYY-MM-DD or YYYY/MM/DD for dates.");
   return ymd(+match[1], +match[3], +match[4]);

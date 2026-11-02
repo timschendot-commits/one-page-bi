@@ -103,8 +103,11 @@ namespace OnePageBI {
       }else snapshots[role]=copy;
       return new {name=name,token=copy.Token,sha256=copy.Hash,bytes=Convert.ToBase64String(input)};
     }
-    internal void StartPool(){pool.Clear();}
-    internal void RemoveMaterial(string token){pool.Remove(token);}
+    readonly string sessionStage=Path.Combine(Path.GetTempPath(),"OnePageBI-stage-"+Guid.NewGuid().ToString("N"));
+    internal void ClearStage(){if(Directory.Exists(sessionStage))Directory.Delete(sessionStage,true);}
+    internal void StageMaterial(string token,string tables){if(!pool.ContainsKey(token))throw new InvalidDataException();Directory.CreateDirectory(sessionStage);File.WriteAllText(Path.Combine(sessionStage,token+".json"),tables,Utf8);}
+    internal void StartPool(){pool.Clear();ClearStage();}
+    internal void RemoveMaterial(string token){if(pool.Remove(token)&&Directory.Exists(sessionStage))File.Delete(Path.Combine(sessionStage,token+".json"));}
     InputCopy Bound(string token,string role){
       InputCopy src;if(!pool.TryGetValue(token,out src))throw new DesktopError("Material removed. Choose the report again.","材料已移出，请重新选择报表。");
       return new InputCopy{Role=role,Name=src.Name,Token=token,Bytes=src.Bytes,Hash=src.Hash};
@@ -140,14 +143,54 @@ namespace OnePageBI {
         }
         File.WriteAllText(Path.Combine(stage,"data","processed.json"),(string)d["processed"],Utf8);
         File.WriteAllText(Path.Combine(stage,"dashboard","report.html"),(string)d["html"],Utf8);
+        if(d.ContainsKey("materials")){
+          var materials=Json.Deserialize<string[]>((string)d["materials"]);
+          if(materials.Length!=copies.Length)throw new InvalidDataException();
+          var sheets=Json.Deserialize<string[]>((string)d["stageSheets"]);
+          for(int i=0;i<materials.Length;i++){
+            var tables=Json.Deserialize<Dictionary<string,object>[]>(File.ReadAllText(Path.Combine(sessionStage,copies[i].Token+".json")));
+            var selected=tables.Single(t=>(string)t["sheet"]==sheets[i]);
+            File.WriteAllText(Path.Combine(stage,"data","staged-"+(i+1)+".csv"),(string)selected["csv"],new UTF8Encoding(true));
+            File.WriteAllText(Path.Combine(stage,"data","material-"+(i+1)+".csv"),materials[i],new UTF8Encoding(true));
+          }
+        }
         File.WriteAllText(Path.Combine(stage,"template.json"),(string)d["template"],Utf8);
         byte[] png=ReadPng((string)d["png"]);
         File.WriteAllBytes(Path.Combine(stage,"exports","report.png"),png);
-        var meta=new {id=id,created=(string)d["created"],source=first.Name,sha256=first.Hash,sources=copies.Select(c=>new {role=c.Role,name=c.Name,sha256=c.Hash}).ToArray(),rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=recipe,appVersion="0.4.0",language=Language,schemaVersion=1};
+        var meta=new {id=id,created=(string)d["created"],source=first.Name,sha256=first.Hash,sources=copies.Select(c=>new {role=c.Role,name=c.Name,sha256=c.Hash}).ToArray(),rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=recipe,appVersion="0.5.0",language=Language,schemaVersion=1};
         File.WriteAllText(Path.Combine(stage,"metadata.json"),Json.Serialize(meta),Utf8);
+        var hashes=new Dictionary<string,string>();
+        foreach(var file in Directory.GetFiles(stage,"*",SearchOption.AllDirectories))hashes[file.Substring(stage.Length+1).Replace('\\','/')]=FileHash(file);
+        File.WriteAllText(Path.Combine(stage,"checksums.json"),Json.Serialize(hashes),Utf8);
         Directory.Move(stage,dest);
       } finally {if(Directory.Exists(stage)) Directory.Delete(stage,true);}
       return id;
+    }
+    static string FileHash(string file){using(var hash=SHA256.Create())using(var stream=File.OpenRead(file))return BitConverter.ToString(hash.ComputeHash(stream)).Replace("-","").ToLowerInvariant();}
+    internal string CheckedFile(string id,string relative){
+      string root=ItemPath(id,""),manifest=Path.Combine(root,"checksums.json");
+      if(!File.Exists(manifest))throw new DesktopError("This earlier archive has no replay manifest.","此旧版归档没有复算清单。");
+      if(relative.Contains("..")||relative.Contains(":")||Path.IsPathRooted(relative))throw new InvalidDataException();
+      var hashes=Json.Deserialize<Dictionary<string,string>>(File.ReadAllText(manifest));
+      var file=Path.GetFullPath(Path.Combine(root,relative));string bound=Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
+      if(!file.StartsWith(bound,StringComparison.OrdinalIgnoreCase))throw new InvalidDataException();
+      for(string p=file;p!=null&&p.Length>=bound.Length-1;p=Path.GetDirectoryName(p))if((File.GetAttributes(p)&FileAttributes.ReparsePoint)!=0)throw new InvalidDataException();
+      string hash;if(!hashes.TryGetValue(relative.Replace('\\','/'),out hash)||hash!=FileHash(file))throw new DesktopError("Archive changed: "+relative,"归档内容有变化："+relative);
+      return file;
+    }
+    internal object Review(string id){
+      return new {template=File.ReadAllText(CheckedFile(id,"template.json")),processed=File.ReadAllText(CheckedFile(id,"data/processed.json"))};
+    }
+    internal object ReviewPart(string id,int i,bool original,bool full){
+      if(i<0||i>=9)throw new InvalidDataException();
+      var meta=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(CheckedFile(id,"metadata.json")));
+      var sources=(System.Collections.IList)meta["sources"];if(i>=sources.Count)throw new InvalidDataException();
+      var s=(Dictionary<string,object>)sources[i];string role=(string)s["role"],name=(string)s["name"];
+      if(name!=Path.GetFileName(name)||role!=Path.GetFileName(role))throw new InvalidDataException();
+      string csv=File.ReadAllText(CheckedFile(id,"data/"+(full?"staged-":"material-")+(i+1)+".csv"));
+      var path=original?CheckedFile(id,"inputs/"+(role=="main"?"":role+"/")+name):null;
+      if(original&&FileHash(path)!=(string)s["sha256"])throw new DesktopError("Original input hash differs.","原始输入摘要不一致。");
+      return new {csv=csv,staged=original?File.ReadAllText(CheckedFile(id,"data/staged-"+(i+1)+".csv")):"",bytes=original?Convert.ToBase64String(File.ReadAllBytes(path)):""};
     }
     internal static byte[] ReadPng(string data){
       byte[] bytes=Convert.FromBase64String(data);
@@ -165,7 +208,7 @@ namespace OnePageBI {
       string html=ItemPath(id,@"dashboard\report.html");
       var meta=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(ItemPath(id,"metadata.json")));
       string recipe=Convert.ToString(meta.ContainsKey("recipe")?meta["recipe"]:"sales");
-      if(recipe!="sales" && recipe!="orders" && recipe!="cashflow" && recipe!="payout") throw new DesktopError("Unknown recipe.","无法识别配方。");
+      if(!new[]{"sales","orders","cashflow","payout","purchase","expense","customer","product","channel","store","project","margin","stock","ar","ap","journal","trial","income","position","budget","workcost"}.Contains(recipe)) throw new DesktopError("Unknown recipe.","无法识别配方。");
       string source=Path.GetFileNameWithoutExtension((string)meta["source"]);
       string shortName=new string(source.Where(c=>Array.IndexOf(Path.GetInvalidFileNameChars(),c)<0).Take(42).ToArray()).TrimEnd(' ','.');
       if(shortName.Length>0 && Char.IsHighSurrogate(shortName[shortName.Length-1]))shortName=shortName.Substring(0,shortName.Length-1);

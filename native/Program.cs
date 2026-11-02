@@ -19,6 +19,7 @@ namespace OnePageBI {
     readonly string install=AppDomain.CurrentDomain.BaseDirectory;
     internal Workbench(string alternate){
       store=new Store(alternate);
+      FormClosed+=(s,e)=>{try{store.ClearStage();}catch(IOException){}};
       profile=Path.Combine(alternate??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"One Page BI"),"WebView2");
       Text="One Page BI";
       inventoryWatch.SynchronizingObject=this;
@@ -92,6 +93,7 @@ namespace OnePageBI {
     object Dispatch(string method,Dictionary<string,object> d){
       string role=d.ContainsKey("role")?(string)d["role"]:"main";
       switch(method){
+        case "stageMaterial":store.StageMaterial((string)d["token"],(string)d["tables"]);return true;
         case "startPool":store.StartPool();return true;
         case "materialLoad":return store.Material((string)d["name"]);
         case "materialDrop":return store.Material((string)d["name"],Convert.FromBase64String((string)d["bytes"]));
@@ -111,10 +113,19 @@ namespace OnePageBI {
         case "load":return store.Load((string)d["name"],role);
         case "putOnDesktop":return store.PutOnDesktop((string)d["archiveId"]);
         case "inventoryReport":Open(store.InventoryReport((string)d["name"]));return true;
+        case "review":return store.Review((string)d["archiveId"]);
+        case "reviewPart":return store.ReviewPart((string)d["archiveId"],Convert.ToInt32(d["index"]),Convert.ToBoolean(d["original"]),d.ContainsKey("full")&&Convert.ToBoolean(d["full"]));
         case "archive":return store.Archive(d);
         case "history":return store.History();
         case "report":Open(store.ItemPath((string)d["archiveId"],@"dashboard\report.html"));return true;
         case "archiveFolder":Open(store.ItemPath((string)d["archiveId"],""));return true;
+        case "saveMaterial":
+          using(var dlg=new SaveFileDialog {Filter="CSV (*.csv)|*.csv",FileName="material.csv",AddExtension=true,DefaultExt="csv"}){
+            if(dlg.ShowDialog(this)!=DialogResult.OK)return false;
+            string target=Path.GetFullPath(dlg.FileName);
+            if(!target.EndsWith(".csv",StringComparison.OrdinalIgnoreCase)||target.StartsWith(Path.GetFullPath(store.Reports)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new DesktopError("Choose a CSV outside the archive.","请在归档以外的位置保存 CSV。");
+            File.WriteAllText(target,(string)d["csv"],new System.Text.UTF8Encoding(true));return true;
+          }
         case "exportPng":
           var png=store.ItemPath((string)d["archiveId"],@"exports\report.png");
           using(var dlg=new SaveFileDialog {Title=L("Export PNG","导出 PNG"),Filter=L("PNG image","PNG 图像")+"|*.png",FileName=L("OnePageBI-report.png","一页报表.png"),DefaultExt="png",AddExtension=true}){
@@ -140,4 +151,3 @@ namespace OnePageBI {
     }
   }
 }
-

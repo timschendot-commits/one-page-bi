@@ -1,4 +1,13 @@
 import {
+  business,
+  businessIds,
+  isBusiness,
+  byKind,
+  fieldSpec,
+  type Business,
+} from "./catalog";
+import { businessReport } from "./business-input";
+import {
   readSource,
   identifier,
   raw,
@@ -15,6 +24,8 @@ import {
   type Mapping,
   type Report,
 } from "./model";
+import type { Sql } from "sql.js";
+import { preparedSource, wrapWorkbook,issueText } from "./stage";
 import { payoutSuggest, preparePayout, type PayoutMap } from "./payout-input";
 import { reconcile } from "./payout-model";
 import { recall, readOptions } from "./mapping-memory";
@@ -23,6 +34,7 @@ import type { RecipeId } from "./recipes";
 
 export type Kind = RecipeId | "payout";
 export type Use =
+  | Business
   | "sales"
   | "cashflow"
   | "settlement"
@@ -44,6 +56,7 @@ export interface Layout {
 export interface Sheet {
   sheet: string;
   headerRow: number;
+  noHeader?: boolean;
   table?: Table;
   error?: unknown;
   manual?: Layout;
@@ -57,7 +70,7 @@ export interface Material {
   error?: unknown;
   report: boolean;
   inventoryOrigin?: { folder: string; modified: string; size: number };
-  origin?: "sales" | "orders" | "cashflow" | "payout";
+  origin?: Kind;
 }
 export interface Binding {
   material: Material;
@@ -71,14 +84,22 @@ export interface Candidate {
   review: boolean;
   periods?: boolean;
 }
-export const kinds: Kind[] = ["sales", "orders", "cashflow", "payout"];
+export const kinds: Kind[] = [
+  "sales",
+  "orders",
+  "cashflow",
+  "payout",
+  ...businessIds,
+];
 export const kindTitles: Record<Kind, Message> = {
+  ...byKind((id) => business[id].title),
   sales: "Sales overview",
   orders: "Order analysis",
   cashflow: "Cash flow statement",
   payout: "Payout check",
 };
 export const useNames: Record<Use, Message> = {
+  ...byKind((id) => business[id].material),
   sales: "Sales lines",
   cashflow: "Cash ledger",
   settlement: "Platform payouts",
@@ -100,6 +121,7 @@ export const colNames: Record<keyof Columns, Message> = {
   discount: "Line discount amount",
 };
 export const columnsFor: Record<Use, (keyof Columns)[]> = {
+  ...byKind((id) => Object.keys(fieldSpec(id)) as (keyof Columns)[]),
   sales: [
     "date",
     "amount",
@@ -149,6 +171,35 @@ export function layout(table: Table, use: Use): Layout {
     price: null,
     discount: null,
   };
+  if (isBusiness(use)) {
+    const spec = fieldSpec(use);
+    for (const k of Object.keys(cols) as (keyof Columns)[]) {
+      const field = spec[k];
+      const aliases =
+        field === "Date"
+          ? [
+              "date",
+              "salesdate",
+              "orderdate",
+              "purchasedate",
+              "invoicedate",
+              "expensedate",
+              "bookingdate",
+              "postingdate",
+              "日期",
+            ]
+          : field === "SKU"
+            ? ["sku", "itemcode"]
+            : field
+              ? [keyName(field)]
+              : [];
+      cols[k] = column(headers, aliases);
+    }
+    if (use === "margin" && cols.category === null)
+      cols.category = column(headers, ["category", "sku"]);
+  }
+  if ((use === "sales" || use === "header") && base.date === null)
+    cols.date = column(headers, ["invoicedate"]);
   if (role && p) Object.assign(cols, p, { order: null, category: null });
   if (use === "sales" || use === "lines" || use === "header") {
     cols.quantity = column(headers, [
@@ -189,9 +240,22 @@ export function layout(table: Table, use: Use): Layout {
   }
   if (use === "cashflow")
     cols.date ??= column(headers, ["bookingdate", "valuedate", "入账日"]);
+  if (table.audit) {
+    for (const [k, type] of [
+      ["date", "Date"],
+      ["currency", "Currency code"],
+    ] as const) {
+      const hits = table.audit.hints.flatMap((h, i) => (h === type ? [i] : []));
+      if (cols[k] === null && hits.length === 1) cols[k] = hits[0];
+    }
+  }
   for (const k of Object.keys(cols) as (keyof Columns)[])
     if (!columnsFor[use].includes(k)) cols[k] = null;
-  const saved = recall("pool." + use, headers, cols);
+  const saved = table.audit?.noHeader
+    ? cols
+    : recall("pool." + use, headers, cols);
+  if (table.audit?.noHeader)
+    return { use, columns: saved, dmy: false, description: false };
   const options = readOptions("pool." + use, headers, {
     dmy: false,
     description:
@@ -208,16 +272,30 @@ export function layout(table: Table, use: Use): Layout {
   return { use, columns: saved, ...options };
 }
 export function fieldLabel(use: Use, key: keyof Columns): Message {
+  if (isBusiness(use)) return (fieldSpec(use)[key] ?? colNames[key]) as Message;
   if (key === "amount" && (use === "cashflow" || use === "bank"))
     return "Signed amount";
   if (key === "amount" && use === "settlement") return "Net payout";
   return colNames[key];
 }
-export function getSheet(source: Source, sheet: string, headerRow = 1): Sheet {
+export function getSheet(
+  source: Source,
+  sheet: string,
+  row?: number,
+  headerless?: boolean,
+): Sheet {
+  const detected = row === undefined ? source.suggest?.(sheet) : undefined;
+  const headerRow = row ?? detected?.row ?? 1,
+    noHeader = headerless ?? detected?.noHeader ?? false;
   try {
-    return { sheet, headerRow, table: source.table(sheet, headerRow) };
+    return {
+      sheet,
+      headerRow,
+      noHeader,
+      table: source.table(sheet, headerRow, noHeader),
+    };
   } catch (error) {
-    return { sheet, headerRow, error };
+    return { sheet, headerRow, noHeader, error };
   }
 }
 function extracted(bytes: Uint8Array): {
@@ -259,6 +337,25 @@ function extracted(bytes: Uint8Array): {
   };
   const currency = (unit: unknown) =>
     typeof unit === "string" && /^[A-Z]{3}$/.test(unit) ? unit : null;
+  if (isBusiness(data.recipe) && data.reusable) {
+    const { headers, rows } = data.reusable;
+    if (
+      !Array.isArray(headers) ||
+      headers.length > 80 ||
+      !headers.every((h) => typeof h === "string") ||
+      !Array.isArray(rows) ||
+      !rows.every((r) => Array.isArray(r) && r.length === headers.length)
+    )
+      problem("Unsupported or incomplete embedded report data.");
+    make("Report data", headers, rows);
+    return {
+      source: {
+        sheets: ["Report data"],
+        table: () => tables.get("Report data")!,
+      },
+      origin: data.recipe,
+    };
+  }
   if (Array.isArray(data.cases) && currency(data.currency)) {
     for (const role of ["settlement", "bank"] as const) {
       const rows: unknown[][] = [];
@@ -324,6 +421,7 @@ export function inspect(
   name: string,
   hash: string,
   bytes: Uint8Array,
+  sql?: Sql,
 ): Material {
   const m: Material = {
     token,
@@ -335,9 +433,12 @@ export function inspect(
   try {
     if (m.report) {
       const r = extracted(bytes);
-      m.source = r.source;
+      m.source = sql ? wrapWorkbook(sql, r.source) : r.source;
       m.origin = r.origin;
-    } else m.source = readSource(bytes, name);
+    } else
+      m.source = sql
+        ? preparedSource(sql, bytes, name)
+        : readSource(bytes, name);
     // More sheets are available through the material inspector, without scanning
     // every worksheet of a large workbook on the UI thread.
     m.views = m.source.sheets.slice(0, 6).map((s) => getSheet(m.source!, s));
@@ -407,8 +508,36 @@ export function matches(materials: Material[]): Candidate[] {
         const l = view.manual ?? layout(view.table, use),
           c = l.columns,
           b = { material, view, layout: l };
+        if (isBusiness(use)) {
+          if (
+            columnsFor[use].every(
+              (k) =>
+                k === "currency" ||
+                (use === "margin" && k === "category") ||
+                c[k] !== null,
+            )
+          )
+            add(use, [b], true);
+          continue;
+        }
         const tagged = (i: number | null) =>
           i === null ? "" : keyName(view.table!.headers[i]);
+        if (
+          !view.manual &&
+          (use === "cashflow" || use === "sales") &&
+          view.table.headers.some((h) =>
+            [
+              "journalid",
+              "openingbalance",
+              "closingbalance",
+              "accountclass",
+              "budgetamount",
+              "snapshotdate",
+              "outstanding",
+            ].includes(keyName(h)),
+          )
+        )
+          continue;
         const hasValue =
           c.amount !== null || (c.quantity !== null && c.price !== null);
         const salesSignal =
@@ -625,6 +754,121 @@ function checked(t: Table, c: Columns) {
     problem("Use a different valid column for each field.");
 }
 export function compile(candidate: Candidate, unit: string) {
+  const entities = new Set<string>();
+  for (const part of candidate.parts) {
+    const tab = part.view.table!;
+    if (!tab.audit) continue;
+    const entity = tab.headers.findIndex((h) =>
+      [
+        "company",
+        "companyid",
+        "legalentity",
+        "公司",
+        "法人主体",
+        "账套",
+      ].includes(keyName(h)),
+    );
+    const state = tab.headers.findIndex((h) =>
+      [
+        "status",
+        "docstatus",
+        "postingstatus",
+        "状态",
+        "过账状态",
+        "单据状态",
+      ].includes(keyName(h)),
+    );
+    for (const row of tab.lines) {
+      if (entity >= 0) {
+        const value = raw(row.cells[entity]);
+        entities.add(value);
+        if (!value || entities.size > 1)
+          throw new LocalizedError(
+            (l) =>
+              translator(l)("Row {row}", { row: row.n }) +
+              " · " +
+              (l === "en"
+                ? "Separate legal entities before reporting."
+                : "请分开不同法人或补全公司再生成。"),
+          );
+      }
+      if (state >= 0) {
+        const value = raw(row.cells[state]).toLowerCase();
+        if (
+          [
+            "draft",
+            "void",
+            "voided",
+            "cancelled",
+            "canceled",
+            "unposted",
+            "pending",
+            "草稿",
+            "作废",
+            "取消",
+            "未过账",
+          ].includes(value) ||
+          (candidate.kind === "journal" &&
+            !["posted", "submitted", "1", "已过账", "已提交"].includes(value))
+        )
+          throw new LocalizedError(
+            (l) =>
+              translator(l)("Row {row}", { row: row.n }) +
+              " · " +
+              (l === "en"
+                ? "Review posting or cancellation status."
+                : "请核对过账、取消或待处理状态。"),
+          );
+      }
+    }
+  }
+  for (const part of candidate.parts) {
+    const issue = part.view.table?.audit?.issues.find(
+      (i) => candidate.kind !== "payout" || i.reason!=="Identical to source row",
+    );
+    if (issue)
+      throw new LocalizedError(
+        (lang) =>
+          part.material.name +
+          " / " +
+          translator(lang)("Row {row}", { row: issue.row }) +
+          " · " +
+          issueText(issue,lang),
+      );
+  }
+  for (const p of candidate.parts) {
+    const table = p.view.table!;
+    if (!table.audit) continue;
+    for (const field of [
+      "amount",
+      "debit",
+      "credit",
+      "price",
+      "discount",
+    ] as const) {
+      const i = p.layout.columns[field];
+      if (i === null) continue;
+      const row = table.lines.find(
+        (r) =>
+          typeof r.cells[i] === "string" &&
+          /^[+-]?\d{1,3},\d{3}$/.test(raw(r.cells[i])),
+      );
+      if (row)
+        throw new LocalizedError(
+          (lang) =>
+            translator(lang)("Row {row}", { row: row.n }) +
+            " · " +
+            (lang === "en"
+              ? "Ambiguous comma amount. Supply an ungrouped decimal."
+              : "逗号可能是小数点或千分位，请提供无千分位的明确金额。"),
+        );
+    }
+  }
+  if (isBusiness(candidate.kind)) {
+    const p = candidate.parts[0];
+    checked(p.view.table!, p.layout.columns);
+    return businessReport(candidate.kind, p, unit);
+  }
   if (candidate.periods) {
     if (!unit || unit === "Source units")
       problem("Confirm a common currency before combining periods.");
@@ -885,6 +1129,7 @@ export function preflight(c: Candidate): {
   error?: unknown;
 } {
   try {
+    if(isBusiness(c.kind)&&c.kind!=="stock"&&c.parts[0].layout.columns.currency===null)return {state:"confirm"};
     let unit = "Source units";
     if (c.kind === "payout" || c.periods) {
       const observed = new Set<string>();

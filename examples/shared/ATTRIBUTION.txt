@@ -1,0 +1,5 @@
+x17.csv contains the first 32 consecutive data rows of Online Retail, Daqing Chen (2015), UCI Machine Learning Repository, DOI 10.24432/C5BW33.
+Dataset: https://archive.ics.uci.edu/dataset/352/online+retail
+License: Creative Commons Attribution 4.0 International, https://creativecommons.org/licenses/by/4.0/
+Changes: only a continuous subset is included, columns are reversed, local timestamps are formatted as text, and the sample is serialized as a BOM-marked UTF-16 semicolon-separated file with a title row. It contains no inferred sales tax or allocated refunds.
+17-B.csv, Q9.csv and NO-HEAD.csv are synthetic fixtures created for this software.

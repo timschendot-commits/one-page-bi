@@ -74,7 +74,7 @@ export function paint(
   label(
     selection +
       "   ·   " +
-      t("Amount unit") +
+      t(r.recipe === "stock" ? "Unit" : "Amount unit") +
       " " +
       sourceUnit(r.unit, language),
     45,

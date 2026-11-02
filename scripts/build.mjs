@@ -1,6 +1,12 @@
+import { execFileSync } from "node:child_process";
 import { build } from "esbuild";
 import { mkdir, copyFile } from "node:fs/promises";
 await mkdir("dist", { recursive: true });
+execFileSync(process.execPath, [
+  "--import",
+  "tsx",
+  "scripts/build-profiles.ts",
+]);
 const bundle = (entry) =>
   build({
     entryPoints: [entry],
@@ -17,6 +23,7 @@ const [report, payout] = await Promise.all([
 ]);
 await build({
   entryPoints: ["src/app.tsx"],
+  external: ["fs", "path", "crypto"],
   outfile: "dist/app.js",
   bundle: true,
   minify: true,
@@ -40,4 +47,5 @@ await build({
     },
   ],
 });
+await copyFile("node_modules/sql.js/dist/sql-wasm.wasm", "dist/sql-wasm.wasm");
 await copyFile("index.html", "dist/index.html");

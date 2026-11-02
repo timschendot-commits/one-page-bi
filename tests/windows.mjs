@@ -139,6 +139,8 @@ async function choose(kind, unit, variant) {
   await dialog.waitFor();
   if (unit) await dialog.getByRole("combobox").selectOption(unit);
   await btn("Confirm and validate", dialog).click();
+  if ((await dialog.isVisible()) && (await dialog.getByRole("alert").count()))
+    throw Error(await dialog.innerText());
 }
 async function craft() {
   await click("Craft and archive");
@@ -290,8 +292,10 @@ try {
   const d = page.getByRole("dialog");
   await d.getByRole("spinbutton").fill("2");
   await d.getByLabel("Material meaning").selectOption("cashflow");
-  await d.getByLabel("Date", { exact: true }).selectOption("0");
-  await d.getByLabel("Signed amount", { exact: true }).selectOption("1");
+  await d.getByLabel("Date", { exact: true }).selectOption({ label: "When" });
+  await d
+    .getByLabel("Signed amount", { exact: true })
+    .selectOption({ label: "Collected" });
   await click("Apply to material");
   await choose("Cash flow statement", "MYR", "weird.csv");
   await writeFile(odd, "modified after loading");
@@ -340,6 +344,15 @@ try {
   await click("历史记录");
   await page.locator(".histitem").first().waitFor();
   assert.equal(await page.locator(".histitem").count(), 4);
+  await page
+    .locator(".histitem")
+    .filter({ hasText: "Order-items-demo.tsv" })
+    .getByRole("button", { name: "核查材料与重新验证" })
+    .click();
+  await click("从原件重算验证");
+  await page.getByText("复算一致", { exact: true }).waitFor();
+  await page.screenshot({ path: path.join(out, "history-verify.png") });
+  await page.getByRole("dialog").press("Escape");
   const target = path.join(profile, "history-export.png");
   await Promise.all([
     fillNativeDialog(target),
@@ -432,6 +445,62 @@ try {
     path: path.join(out, "chosen-zh.png"),
     fullPage: true,
   });
+  await closeApp();
+  if (process.env.ONEPAGEBI_PUBLIC_CASE) {
+    await launch("zh-CN");
+    await click("English");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(path.join(process.env.ONEPAGEBI_PUBLIC_CASE, "x17.csv"));
+    await btn("x17.csv", page.locator(".materials")).click();
+    await page.getByText(/SQL material preview/).waitFor();
+    await page.screenshot({ path: path.join(out, "retail-preparation.png") });
+    await page.getByRole("dialog").press("Escape");
+    await choose("Sales overview", "GBP");
+    await craft();
+    await click("History");
+    const retail = page.locator(".histitem").filter({ hasText: "x17.csv" });
+    await retail
+      .getByRole("button", { name: "Review staging and verify" })
+      .click();
+    await click("Run verification");
+    await page.getByText("Verification passed", { exact: true }).waitFor();
+    const exported = path.join(profile, "retail-material.csv");
+    await Promise.all([fillNativeDialog(exported), click("Save a copy")]);
+    await page.getByText("Exported material", { exact: true }).waitFor();
+    assert.ok((await stat(exported)).size > 100);
+    await closeApp();
+  }
+  await launch(process.env.ONEPAGEBI_PUBLIC_CASE ? "en" : "zh-CN");
+  if (!process.env.ONEPAGEBI_PUBLIC_CASE) await click("English");
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles(path.join(release, "examples/en/17-B.csv"));
+  await choose("Trial balance roll-forward", "MYR");
+  await craft();
+  await put();
+  const trialArchive = await archived("trial");
+  await click("History");
+  const trialEntry = page.locator(".histitem").filter({ hasText: "17-B.csv" });
+  await trialEntry
+    .getByRole("button", { name: "Review staging and verify" })
+    .click();
+  await click("Run verification");
+  await page.getByText("Verification passed", { exact: true }).waitFor();
+  await page.getByText("Show all staged columns").click();
+  await page
+    .getByRole("dialog")
+    .getByRole("cell", { name: "Period debit", exact: true })
+    .waitFor();
+  await page.getByRole("dialog").press("Escape");
+  const csvPath = path.join(trialArchive.dir, "data/material-1.csv"),
+    before = await readFile(csvPath);
+  await writeFile(csvPath, "changed");
+  await trialEntry
+    .getByRole("button", { name: "Review staging and verify" })
+    .click();
+  await page.getByText(/Archive changed/).waitFor();
+  await writeFile(csvPath, before);
   await closeApp();
   const edgePath =
     process.env.EDGE_PATH ||

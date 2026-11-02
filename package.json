@@ -1,29 +1,30 @@
 {
   "name": "one-page-bi",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.25.0",
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/core.test.ts",
+    "test": "tsx --test tests/core.test.ts tests/preparation.test.ts",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "test:windows": "node tests/windows.mjs"
   },
   "dependencies": {
+    "csv-parse": "6.1.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "csv-parse": "6.1.0"
+    "sql.js": "1.13.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@types/node": "24.9.2",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
-    "@types/node": "24.9.2",
     "esbuild": "0.25.11",
-    "typescript": "5.9.3",
+    "playwright-core": "1.56.1",
     "tsx": "4.20.6",
-    "playwright-core": "1.56.1"
+    "typescript": "5.9.3"
   }
 }

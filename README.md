@@ -1,12 +1,24 @@
-# One Page BI V0.4.0 · Local Windows milestone
+# One Page BI V0.5.0 · Local Windows milestone
 
 English · [简体中文](README.zh-CN.md)
+
+## New in this version
+
+Drop a CSV, TSV, XLSX or prepared BI report into the square workbench. Open the material to see the SQL result, the first source rows, the presentation rules and the suggested column types. UTF-8 and BOM-marked UTF-16 delimited files can use commas, tabs, semicolons or pipes. Files are identified by structure and values. If there are no headers, the material keeps the first row and shows numbered columns. Choose a meaning and map ambiguous columns yourself. Check the suggested start row, especially when a file contains a cover note. Excel imports retain typed date and ID information.
+
+The **Recipe catalog** contains 21 runnable report types. The four original recipes are joined by sales by customer, SKU, channel or store, purchasing by supplier, expenses, gross profit, stock on hand, receivables aging, payables aging, project billing, posted work-order cost, journal movements, trial balance roll-forward, income and expense statement, balance sheet check, and budget versus actual. Cross-period merging is also available for compatible sales materials. Sector coverage and source conventions are described in [Report rules and verification](REPORT-RULES.md).
+
+Before crafting, safe changes include trimming whitespace, standardizing known labels, ordering fields and removing blank rows and exact repeated headers. Original row numbers and input bytes remain available. Data rows are never filled forward or silently deduplicated. Suspicious duplicates block aggregates. The payout exception report can retain duplicate rows as evidence without confirming them as receipts. Ambiguous dates, mixed entities, status issues, conflicting units and failed accounting checks require correction. Data suppliers remain responsible for completeness and business meaning.
+
+**History → Review staging and verify** opens the exact material used. Switch between the full staging CSV and the report projection, page through rows, or save a CSV copy. **Run verification** starts fresh from archived input bytes, reapplies the recorded layout and mapping, and compares both CSVs and the processed report rows. Checksums detect changes relative to the stored manifest. This is not a signature or an audit of the originating business. Older archives still open but pre-0.5 archives lack this replay manifest. CSV copies guard spreadsheet formula text. Read IDs as text when opening in Excel.
+
+Try **x17.csv**, a real 32-row extract from the UCI Online Retail dataset, with an anonymous filename, reversed columns and a title row. Choose Sales and GBP. The sum of quantity × unit price is **GBP 819.55**. This is a line-value check on the sample. The original field definitions do not establish tax-adjusted or refund-allocated statutory revenue. Attribution is in the sample folder. **17-B.csv** checks a synthetic trial balance. **Q9.csv** contains two synthetic supplier invoices. **NO-HEAD.csv** lets you try manual interpretation while keeping leading-zero IDs.
 
 Drop the files you have onto the nine-slot workbench. One Page BI inspects their columns and offers sales, order, cash flow and payout reports that they could support. Choosing a template first is optional. The app starts in English. **中文** and **English** switch languages and preserve the current session.
 
 ## Start and try the joined-order example
 
-1. Extract **OnePageBI-V0.4.0-local-Windows-x64.zip** and run **OnePageBI.exe**. Keep its DLLs, `ui`, `licenses` and `examples` together. Requires Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+1. Extract **OnePageBI-V0.5.0-local-Windows-x64.zip** and run **OnePageBI.exe**. Keep its DLLs, `ui`, `licenses` and `examples` together. Requires Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 2. The square inventory opens on your Desktop. Choose **Examples** from its location menu. Hold Ctrl and select **Order-headers-demo.csv**, **Order-items-demo.tsv**, **Payouts-demo.csv** and **Bank-demo.csv**. Drag the group to the grid, or choose **Add selected**. You can also drop files from Explorer, click an empty slot to browse, or click an inventory data file to load it.
 3. The right side lists possible report types, even if you previously chose a different template. Select **Order analysis**. Check which source supplies each field, then select **MYR** and **Confirm and validate**. Only the two order files participate. Unused materials stay on the grid for the next recipe.
 4. Click **Craft** in the output slot. The synthetic example gives **MYR 125.00**, **2** orders and **MYR 62.50** average order value. Open the interactive report, filter it, or export a PNG. Drag the finished item into the inventory (or choose **To inventory**) for a standalone Desktop copy. Choose **Change selection** to use the same materials again.
@@ -26,21 +38,21 @@ Mapping explains an input column. It uses no material slot. A date and a generic
 ## Unfamiliar files and limits
 
 - Click a material to choose its worksheet, header row (1–50), business meaning and column names. Sample values are shown beside the mapping. A workbook can provide more than one participating worksheet. The first six visible sheets are inspected automatically and additional sheets can be selected in the editor.
-- The inventory lists UTF-8 comma-delimited CSV, tab-separated TSV, XLSX and marked `.onepagebi.html` files. An external standalone One Page BI report can supply its embedded transaction data. Dropping that report reads its data section only. Clicking it in the inventory opens it in the browser.
+- The inventory lists CSV, TSV, XLSX and marked `.onepagebi.html` files. An external standalone One Page BI report can supply its embedded transaction data. Dropping that report reads its data section only. Clicking it in the inventory opens it in the browser.
 - The pool holds nine files and skips byte-identical copies. A data file can be up to 5 MiB, a marked report up to 16 MiB. Data tables support up to 10,000 rows and 80 columns. Workbook ZIP limits are 32 MiB unpacked and 2,000 entries. Use nonempty, unique column names and remove subtotal, balance and footer rows. Export formulas as values. Dates support YYYY-MM-DD, YYYY/MM/DD and supported Excel serial dates. Explicitly enable DD/MM/YYYY for that convention.
-- For order joins, use a complete set of order headers and matching lines. For derived amounts, provide the final line amount when tax, shipping, percentage discounts, or refund treatment cannot be determined by the supported formula. Input units must agree. Currency conversion, arbitrary table joins, PDF/image extraction, profit/forecasting and Power BI PBIP/PBIX export are outside this milestone.
+- For order joins, use a complete set of order headers and matching lines. For derived amounts, provide the final line amount when tax, shipping, percentage discounts, or refund treatment cannot be determined by the supported formula. Input units must agree. Currency conversion, arbitrary table joins, PDF/image extraction, forecasting or statutory filing formats and Power BI PBIP/PBIX export are outside this milestone.
 
 Many merchant exports mix order-level amounts and product rows. Shopify documents this layout and records refunded amounts at order level. When using these exports, supply verified final line amounts or a single verified net row per order. The app blocks repeated order totals and unallocated refunds in derived sales. [Shopify order export fields](https://help.shopify.com/en/manual/fulfillment/managing-orders/exporting-orders)
 
 ## History, exports and local storage
 
-Each successful craft creates a folder in Windows Documents under `One Page BI/Reports/<id>/`. **History** reopens the standalone report, exports its original PNG or opens the archive folder. Archives contain the original bytes of the selected materials in `inputs/`, validated data in `data/processed.json`, interactive `dashboard/report.html`, `exports/report.png` (1800 × 1134), `template.json` with the mapping, worksheet and calculation rules, and `metadata.json` with source names and SHA-256 hashes. Multi-period data includes a per-row source index. Joined rows retain the item and header row numbers. Earlier reports stay available in history.
+Each successful craft creates a folder in Windows Documents under `One Page BI/Reports/<id>/`. **History** reopens the standalone report, exports its original PNG or opens the archive folder. Archives contain the original bytes of the selected materials in `inputs/`, validated data in `data/processed.json`, interactive `dashboard/report.html`, `exports/report.png` (1800 × 1134), `template.json` with the mapping, worksheet and calculation rules, versioned SQL staging and projected CSVs in `data/`, a SHA-256 manifest, and `metadata.json` with source names and SHA-256 hashes. Multi-period data includes a per-row source index. Joined rows retain the item and header row numbers. Earlier reports stay available in history.
 
 The desktop copy is named `BI-<recipe>-<source>-<id>.onepagebi.html`. Repeated drops reuse an identical file. An edited copy is preserved under its current name and the new copy gets a numbered name. Standalone reports work offline and include transaction details. Their PNG button exports the current view and language. New reports have their own English/Chinese toggle.
 
 ## Build and test
 
-The native host uses WinForms and WebView2. The UI uses React and TypeScript, SheetJS CE and csv-parse. The local build uses Node 24 and pnpm 11. Run these commands from the repository root on Windows:
+The native host uses WinForms and WebView2. The UI uses React and TypeScript, SheetJS CE, csv-parse and bundled SQLite (sql.js). The local build uses Node 24 and pnpm 11. Run these commands from the repository root on Windows:
 
 ```powershell
 pnpm install --frozen-lockfile

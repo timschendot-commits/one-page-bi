@@ -22,7 +22,7 @@ try {
     [IO.Compression.ZipFileExtensions]::ExtractToFile($zip.GetEntry($file),(Join-Path $licenses.FullName "WebView2-$file"),$true)
   }
 }finally{$zip.Dispose()}
-foreach($lib in @('react','react-dom','scheduler','xlsx','csv-parse')){
+foreach($lib in @('react','react-dom','scheduler','xlsx','csv-parse','sql.js')){
   $module="node_modules/$lib"
   if($lib -eq 'scheduler'){$module=node -p "require('path').dirname(require.resolve('scheduler/package.json',{paths:[require.resolve('react-dom')]}))"}
   $license=Get-ChildItem -Path $module -Filter 'LICENSE*' -File | Select-Object -First 1
@@ -36,5 +36,8 @@ $ui=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'ui')
 $examples=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'examples')
 Copy-Item dist/* $ui.FullName -Force
 Copy-Item examples/* $examples.FullName -Recurse -Force
-Copy-Item README.md,README.zh-CN.md $release.FullName -Force
+foreach($language in @("en","zh-CN")) { Copy-Item examples/shared/*.csv (Join-Path $examples.FullName $language) -Force }
+Copy-Item examples/shared/ATTRIBUTION.txt (Join-Path $licenses.FullName "data-attribution.txt") -Force
+Copy-Item scripts/verify_materials.py $release.FullName -Force
+Copy-Item README.md,README.zh-CN.md,REPORT-RULES.md $release.FullName -Force
 Write-Output "Ready: $($release.FullName)\OnePageBI.exe"

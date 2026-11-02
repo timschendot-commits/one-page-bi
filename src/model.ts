@@ -13,11 +13,18 @@ export interface Sale {
   row: number;
   date: string;
   cents: number;
+  basis?: number;
+  opening?: number;
+  credit?: number;
+  accountClass?: string;
+  cutoff?: string;
+  bucket?: number;
   order: string | null;
   category: string | null;
 }
 export interface Report {
   recipe?: RecipeId;
+  reusable?: { headers: string[]; rows: string[][] };
   name: string;
   sheet: string;
   created: string;

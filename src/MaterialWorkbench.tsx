@@ -1,3 +1,10 @@
+import {
+  business,
+  businessIds,
+  byKind,
+  isBusiness,
+  fieldSpec,
+} from "./catalog";
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
   call,
@@ -8,6 +15,7 @@ import {
 } from "./bridge";
 import { InventoryPanel } from "./InventoryPanel";
 import { Icon } from "./icons";
+import { tableCSV, openSQL } from "./stage";
 import { Modal } from "./Modal";
 import { MaterialEditor } from "./MaterialEditor";
 import { useLanguage } from "./language";
@@ -35,6 +43,7 @@ import { payoutTotals } from "./payout-model";
 import { money } from "./model";
 type Item = string | File;
 const titleFor: Record<Kind, Message> = {
+  ...byKind((id) => business[id].title),
   sales: "Sales",
   orders: "Order analysis",
   cashflow: "Cash flow",
@@ -42,6 +51,7 @@ const titleFor: Record<Kind, Message> = {
 };
 const inputType = "application/x-onepagebi";
 const kindsText: Record<Kind, Message> = {
+  ...byKind((id) => business[id].material),
   sales: "Date and net line value, or order headers plus matching order items.",
   orders: "Sales lines plus globally unique order IDs.",
   cashflow: "Transaction date and signed cash, or debit and credit.",
@@ -175,6 +185,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
               "Export transaction rows as CSV, TSV or XLSX. Images, PDFs and general HTML cannot supply verified rows.",
             ),
           );
+        const sql = await openSQL();
         let snap: Snapshot & { duplicate?: boolean };
         if (typeof input === "string")
           snap = await call("materialLoad", { name });
@@ -197,6 +208,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
           snap.name,
           snap.sha256,
           Uint8Array.from(atob(snap.bytes), (c) => c.charCodeAt(0)),
+          sql,
         );
         const entry =
           typeof input === "string" && inv.files.find((f) => f.name === input);
@@ -206,6 +218,23 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
             modified: entry.modified,
             size: entry.size,
           };
+        try {
+          await call("stageMaterial", {
+            token: material.token,
+            tables: JSON.stringify(
+              material.views
+                .filter((v) => v.table)
+                .map((v) => ({
+                  sheet: v.sheet,
+                  csv: tableCSV(v.table!),
+                  audit: v.table!.audit,
+                })),
+            ),
+          });
+        } catch (e) {
+          await call("materialRemove", { token: material.token });
+          throw e;
+        }
         added.push(material);
       } catch (error) {
         issues.push({ file: name, error });
@@ -309,36 +338,41 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
     <div className="workcase" inert={busy}>
       <aside className="library">
         <h2>{t("Templates")}</h2>
-        {kinds.map((k) => (
-          <button
-            key={k}
-            className={
-              "bookitem " + (chosen && chosen.kind !== k ? "muted-choice" : "")
-            }
-            aria-label={t(kindTitles[k])}
-            aria-pressed={chosen ? chosen.kind === k : preferred === k}
-            disabled={busy}
-            title={t(kindsText[k])}
-            onClick={() => pickTemplate(k)}
-          >
-            <Icon
-              kind={
-                k === "cashflow"
-                  ? "chart"
-                  : k === "orders"
-                    ? "file"
-                    : k === "payout"
-                      ? "map"
-                      : "book"
+        {kinds
+          .filter(
+            (k) => !isBusiness(k) || k === chosen?.kind || k === preferred,
+          )
+          .map((k) => (
+            <button
+              key={k}
+              className={
+                "bookitem " +
+                (chosen && chosen.kind !== k ? "muted-choice" : "")
               }
-              size={23}
-            />
-            <b>{t(titleFor[k])}</b>
-          </button>
-        ))}
+              aria-label={t(kindTitles[k])}
+              aria-pressed={chosen ? chosen.kind === k : preferred === k}
+              disabled={busy}
+              title={t(kindsText[k])}
+              onClick={() => pickTemplate(k)}
+            >
+              <Icon
+                kind={
+                  k === "cashflow"
+                    ? "chart"
+                    : k === "orders"
+                      ? "file"
+                      : k === "payout"
+                        ? "map"
+                        : "book"
+                }
+                size={23}
+              />
+              <b>{t(titleFor[k])}</b>
+            </button>
+          ))}
         <button className="refbtn" onClick={() => setModal("recipe")}>
           <Icon kind="tree" size={19} />
-          {t("Recipe")}
+          {t("Recipe catalog")}
         </button>
         <button className="refbtn" onClick={() => setModal("parts")}>
           <Icon kind="map" size={19} />
@@ -800,31 +834,37 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
               )}
             </p>
           )}
-          <label className="sheet">
-            {t(chosen.kind === "payout" ? "Common currency" : "Amount unit")}{" "}
-            <select
-              value={unit}
-              onChange={(e) => {
-                setUnit(e.target.value);
-                setProduct(null);
-                setArchive("");
-                setErrors([]);
-              }}
-            >
-              <option value="">
-                {t(
-                  chosen.kind === "payout" || chosen.periods
-                    ? "Confirm currency"
-                    : "Source units",
+          {chosen.kind === "stock" ? (
+            <p>
+              {t("Stock unit")} · {t("Source units")}
+            </p>
+          ) : (
+            <label className="sheet">
+              {t(chosen.kind === "payout" ? "Common currency" : "Amount unit")}{" "}
+              <select
+                value={unit}
+                onChange={(e) => {
+                  setUnit(e.target.value);
+                  setProduct(null);
+                  setArchive("");
+                  setErrors([]);
+                }}
+              >
+                <option value="">
+                  {t(
+                    chosen.kind === "payout" || chosen.periods
+                      ? "Confirm currency"
+                      : "Source units",
+                  )}
+                </option>
+                {["MYR", "CNY", "USD", "SGD", "EUR", "GBP", "AUD", "HKD"].map(
+                  (k) => (
+                    <option key={k}>{k}</option>
+                  ),
                 )}
-              </option>
-              {["MYR", "CNY", "USD", "SGD", "EUR", "GBP", "AUD", "HKD"].map(
-                (k) => (
-                  <option key={k}>{k}</option>
-                ),
-              )}
-            </select>
-          </label>
+              </select>
+            </label>
+          )}
           {feedback}
           <div className="modalactions">
             <button
@@ -847,18 +887,39 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
             setModal(chosen ? "review" : "");
           }}
           onSave={(v) => {
-            setPool((old) =>
-              old.map((m) =>
-                m.token === editor.m.token
-                  ? {
-                      ...m,
-                      views: [...m.views.filter((x) => x.sheet !== v.sheet), v],
-                    }
-                  : m,
-              ),
-            );
-            reset();
-            setEditor(null);
+            void run(async () => {
+              const views = [
+                ...editor.m.views.filter((x) => x.sheet !== v.sheet),
+                v,
+              ];
+              await call("stageMaterial", {
+                token: editor.m.token,
+                tables: JSON.stringify(
+                  views
+                    .filter((x) => x.table)
+                    .map((x) => ({
+                      sheet: x.sheet,
+                      csv: tableCSV(x.table!),
+                      audit: x.table!.audit,
+                    })),
+                ),
+              });
+              setPool((old) =>
+                old.map((m) =>
+                  m.token === editor.m.token
+                    ? {
+                        ...m,
+                        views: [
+                          ...m.views.filter((x) => x.sheet !== v.sheet),
+                          v,
+                        ],
+                      }
+                    : m,
+                ),
+              );
+              reset();
+              setEditor(null);
+            });
           }}
           onRemove={() =>
             void run(async () => {
@@ -882,9 +943,21 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
         >
           {kinds.map((k) => (
             <p key={k}>
-              <b>{t(kindTitles[k])}</b>
+              <button
+                onClick={() => {
+                  setModal("");
+                  pickTemplate(k);
+                }}
+              >
+                {t(kindTitles[k])}
+              </button>
               <br />
               {t(kindsText[k])}
+              {isBusiness(k) &&
+                " · " +
+                  Object.values(fieldSpec(k))
+                    .map((v) => t(v as Message))
+                    .join(" / ")}
             </p>
           ))}
           <p className="help">

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Modal } from "./Modal";
 import { useLanguage } from "./language";
 import { errorText } from "./i18n";
+import { tableCSV,issueText } from "./stage";
+import { call } from "./bridge";
 import { cellLabel } from "./input";
 import {
   getSheet,
@@ -40,9 +42,15 @@ export function MaterialEditor({
   const [custom, setCustom] = useState<Layout | null>(
     initialLayout ?? first?.manual ?? null,
   );
-  function read(sheet: string, n: number) {
+  const [exportMsg, setExportMsg] = useState("");
+  function read(sheet: string, n?: number, noHeader = false) {
     if (!m.source) return;
-    const v = getSheet(m.source, sheet, n);
+    const v = getSheet(
+      m.source,
+      sheet,
+      n,
+      n === undefined ? undefined : noHeader,
+    );
     setView(v);
     setMode("auto");
     setCustom(null);
@@ -66,7 +74,7 @@ export function MaterialEditor({
                     setView(prev);
                     setMode(prev.manual?.use ?? "auto");
                     setCustom(prev.manual ?? null);
-                  } else read(e.target.value, 1);
+                  } else read(e.target.value);
                 }}
               >
                 {m.source.sheets.map((s) => (
@@ -86,12 +94,25 @@ export function MaterialEditor({
                     read(
                       view.sheet,
                       Math.min(50, Math.max(1, +e.target.value || 1)),
+                      view.noHeader,
                     )
                   }
                 />
               </label>
             )}
           </div>
+          {!m.report && (
+            <label>
+              <input
+                type="checkbox"
+                checked={!!view.noHeader}
+                onChange={(e) =>
+                  read(view.sheet, view.headerRow, e.target.checked)
+                }
+              />
+              {t("First selected row is data (no header)")}
+            </label>
+          )}
           {!!view.error && (
             <p className="feedback bad" role="alert">
               {errorText(view.error, language)}
@@ -100,6 +121,86 @@ export function MaterialEditor({
           {view.table && (
             <>
               <p className="help">{t(materialHint(view))}</p>
+              {view.table.audit && (
+                <details className="audit" open>
+                  <summary>
+                    {t("SQL material preview")} · {view.table.lines.length}{" "}
+                    {t("Rows")}
+                  </summary>
+                  <p>
+                    {view.table.audit.encoding} ·{" "}
+                    {JSON.stringify(view.table.audit.delimiter)} ·{" "}
+                    {t("Header row")} {view.headerRow}
+                    {view.noHeader
+                      ? " · " + t("First selected row is data (no header)")
+                      : ""}
+                  </p>
+                  {!!view.table.audit.removed.length && (
+                    <p>
+                      {t("Blank or repeated header rows removed")} ·{" "}
+                      {view.table.audit.removed.slice(0, 20).join(", ")}
+                    </p>
+                  )}
+                  {view.table.audit.issues.slice(0, 5).map((i, idx) => (
+                    <p className="feedback bad" key={idx}>
+                      {t("Row {row}", { row: i.row })} · {issueText(i,language)}
+                    </p>
+                  ))}
+                  <details>
+                    <summary>SQL</summary>
+                    <code>{view.table.audit.query}</code>
+                  </details>
+                  <div className="sample-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          {view.table.headers.map((h, i) => (
+                            <th key={i}>
+                              {h}
+                              <small>{t(view.table!.audit!.hints[i])}</small>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {view.table.lines.slice(0, 3).map((l) => (
+                          <tr key={l.n}>
+                            {l.cells.map((c, i) => (
+                              <td key={i}>{cellLabel(c)}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button
+                    disabled={!!view.table.audit.issues.length}
+                    onClick={async () => {
+                      try {
+                        const used = custom
+                          ? columnsFor[custom.use].filter(
+                              (k) => custom.columns[k] !== null,
+                            )
+                          : null;
+                        const csv = used
+                          ? tableCSV(
+                              view.table!,
+                              used.map((k) => fieldLabel(custom!.use, k)),
+                              used.map((k) => custom!.columns[k]!),
+                            )
+                          : tableCSV(view.table!);
+                        if (await call("saveMaterial", { csv }))
+                          setExportMsg(t("Saved"));
+                      } catch (e) {
+                        setExportMsg(errorText(e, language));
+                      }
+                    }}
+                  >
+                    {t("Save material CSV")}
+                  </button>{" "}
+                  {exportMsg}
+                </details>
+              )}
               <p className="help">{view.table.headers.join(" · ")}</p>
               <label className="sheet">
                 {t("Material meaning")}{" "}
