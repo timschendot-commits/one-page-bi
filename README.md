@@ -1,4 +1,4 @@
-# One Page BI V0.2.0 · Local milestone
+# One Page BI V0.3.0 · Local milestone
 
 English · [简体中文](README.zh-CN.md)
 
@@ -6,12 +6,22 @@ One Page BI is a local Windows workbench for turning CSV and XLSX data into an i
 
 ## Run the portable app
 
-1. Use the local **OnePageBI-V0.2.0-local-Windows-x64.zip** package. Extract the whole folder and run **OnePageBI.exe**. Keep the DLLs, `ui` and `examples` with it. Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) are required.
+1. Use the local **OnePageBI-V0.3.0-local-Windows-x64.zip** package. Extract the whole folder and run **OnePageBI.exe**. Keep the DLLs, `ui` and `examples` with it. Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) are required.
 2. The inventory starts at your Desktop and lists CSV, XLSX and marked report files. To try the bundled sample, select **Examples** in the inventory location menu. Drag **Sales-demo.csv** onto the grid or click its slot.
 3. Confirm the column mapping. Sales date and line amount are required. Order ID, category and currency are optional. Check the sample values, then select **Confirm and validate**.
 4. Click **Craft** in the output slot. Open the finished report to filter by month and category or export the current view as a PNG.
 
 The example should give **CNY 3,393.00** in net sales, **10** distinct orders, **CNY 339.30** average order value and **12** sales lines. February totals **CNY 1,058.00**, including a return of CNY 120.00.
+
+## Check a platform payout against a bank statement
+
+Select **Payouts** in the original workbench template list. The two middle slots accept the **platform settlement batch file** and **posted bank transactions**. Drag either file from the inventory to its slot. Click a filled slot to review columns or replace the file. Use one net transfer per platform batch (after fees and adjustments). The bank can use a signed amount or separate debit and credit columns. Choose the common currency in the mapping dialog. For short dates, explicitly enable DD/MM/YYYY if appropriate. Each subsequent file with the same headers can reuse its confirmed mapping by column name, even when the order changes.
+
+Click the output slot to run the check and archive both input snapshots. The workbench keeps the square crafting grid, inventory and preview. **See exceptions** opens the offline report. Filter by status or search a reference, expand a case to see each filename, worksheet, source row, date and signed amount, or export the entire filtered list to CSV. The difference is bank minus expected. **PNG** is a summary without row-level information. The **HTML** and exception CSV contain transaction details. You can drag the finished report to the inventory to keep a desktop copy.
+
+An automatic match requires one settlement and one positive bank credit with the same exact reference, currency and cent amount, posted from settlement day through seven calendar days later. Reference comparisons are case-sensitive. The optional bank description mode looks for complete known codes separated by whitespace, commas, semicolons or pipes. The seven-day window is a review policy, not a settlement guarantee. Duplicates, reversals, conflicting codes, earlier/later dates and amount discrepancies stay out of confirmed receipts. Equal amounts can only be suggested for review. Pending settlements are checked against the supplied period; unlinked bank entries can be unrelated activity. This version does not automatically split or combine transfers, convert currency or decide whether a merchant lost money.
+
+Use **Examples** with this template for two synthetic files. Select **MYR**. Of MYR 343.00 in positive payouts, MYR 120.00 is confirmed. DEMO-102 has a MYR 90.00 payout and an MYR 88.00 bank credit, a difference of −2.00. Four payout cases need attention, and two bank lines are unlinked. These are generic mapping examples, not certified Grab or bank formats.
 
 ## Craft a desktop report
 
@@ -25,7 +35,7 @@ Generated names follow `BI-<recipe>-<source>-<short-id>.onepagebi.html`. The inv
 | Order analysis | Date, line amount and order ID. Preserve leading zeroes in text IDs. | Distinct orders, average value, multi-line orders, monthly order counts and largest orders. IDs are grouped within the selected rows. An order can appear in more than one month. |
 | Cash flow | Posted date and signed transaction amount. Receipts are positive and payments negative. | Cash in, cash out (positive magnitude), net movement, transaction count and spending by category. The example has CNY 1,400.25 in, 465.25 out and a net increase of 935.00. |
 
-Changing recipes keeps the input available and requires checking its mapping again. The cash ledger accepts one signed amount column. Provide posted transactions in one currency, with no opening-balance or subtotal rows.
+Changing recipes keeps the input available and requires checking its mapping again. The cash ledger accepts a signed amount or separate nonnegative debit and credit columns. A row can have only one nonzero side. Short order ID headers are rejected for order counting. Use a globally unique order ID. Provide posted transactions in one currency, with no opening-balance or subtotal rows.
 
 ## Language and exports
 

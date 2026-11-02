@@ -4,6 +4,9 @@ import { parse } from "csv-parse/browser/esm/sync";
 import * as XLSX from "xlsx";
 import {
   fieldsFor,
+  directionHeader,
+  shortOrderHeader,
+  keyName,
   suggest,
   type Mapping,
   type Sale,
@@ -31,7 +34,7 @@ const blank = (c: Cell) =>
   (typeof c === "string"
     ? !c.trim()
     : !c.f && (c.v === undefined || String(c.v).trim() === ""));
-function raw(c: Cell): string {
+export function raw(c: Cell): string {
   if (typeof c === "string") return c.trim();
   if (!c) return "";
   if (c.f || c.F) fail("Paste formula cells as values before importing.");
@@ -169,7 +172,7 @@ function ymd(y: number, m: number, d: number): string {
     fail("The date does not exist or is outside the supported range.");
   return [y, String(m).padStart(2, "0"), String(d).padStart(2, "0")].join("-");
 }
-function dateValue(cell: Cell, date1904: boolean) {
+export function dateValue(cell: Cell, date1904: boolean, dayFirst = false) {
   const s = raw(cell);
   if (typeof cell === "object" && cell.t === "n") {
     if (!Number.isInteger(cell.v) || (!date1904 && Number(cell.v) === 60))
@@ -178,11 +181,13 @@ function dateValue(cell: Cell, date1904: boolean) {
     if (!d) return fail("Invalid Excel date serial.");
     return ymd(d.y, d.m, d.d);
   }
+  const dmy = dayFirst && /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (dmy) return ymd(+dmy[3], +dmy[2], +dmy[1]);
   const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(s);
   if (!match) return fail("Use YYYY-MM-DD or YYYY/MM/DD for dates.");
   return ymd(+match[1], +match[3], +match[4]);
 }
-function cents(cell: Cell) {
+export function cents(cell: Cell) {
   const s = raw(cell);
   if (!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(s))
     fail(
@@ -194,6 +199,30 @@ function cents(cell: Cell) {
   if (!Number.isSafeInteger(n))
     fail("The amount exceeds the supported precision.");
   return n;
+}
+export function splitCents(debit: Cell, credit: Cell) {
+  if (!raw(debit) && !raw(credit)) fail("Both debit and credit are blank.");
+  const out = raw(debit) ? cents(debit) : 0,
+    incoming = raw(credit) ? cents(credit) : 0;
+  if (out < 0 || incoming < 0 || (out !== 0 && incoming !== 0))
+    fail(
+      "Use nonnegative debit and credit amounts with at most one nonzero side per row.",
+    );
+  return incoming - out;
+}
+export function identifier(cell: Cell) {
+  const value = raw(cell);
+  if (typeof cell === "object" && cell.t === "n") {
+    const displayed = cell.w ?? String(cell.v);
+    if (
+      !Number.isSafeInteger(cell.v) ||
+      Math.abs(Number(cell.v)) >= 1e15 ||
+      !/^\d+$/.test(displayed)
+    )
+      fail("Save order IDs with ambiguous formatting as text.");
+    return displayed;
+  }
+  return value;
 }
 export function cellLabel(c: Cell): string {
   return typeof c === "object"
@@ -222,6 +251,29 @@ export function validate(
     } else if (!Number.isInteger(i) || i < 0 || i >= t.headers.length)
       fail("The mapped column does not exist.");
   }
+  const bothSides = map.debit != null && map.credit != null;
+  if (recipe === "cashflow") {
+    if (
+      map.amount == null
+        ? !bothSides
+        : map.debit != null ||
+          map.credit != null ||
+          directionHeader(t.headers[map.amount])
+    )
+      fail(
+        "Map one signed amount OR both debit and credit columns. A single side cannot represent net cash.",
+      );
+  }
+  const storeCol = t.headers.findIndex((h) =>
+    ["store", "storeid", "outletid", "门店", "门店编号"].includes(keyName(h)),
+  );
+  const orderStores = new Map<string, string>();
+  if (
+    recipe !== "cashflow" &&
+    map.order !== null &&
+    shortOrderHeader(t.headers[map.order])
+  )
+    fail("Short order IDs may repeat. Map a long or globally unique order ID.");
   const used = activeFields.map((f) => map[f.key]).filter((i) => i !== null);
   const orderColumn = recipe === "cashflow" ? null : map.order;
   if (new Set(used).size !== used.length)
@@ -239,21 +291,21 @@ export function validate(
     try {
       const date = dateValue(cells[map.date!], t.date1904);
       field = recipe === "cashflow" ? "Signed amount" : "Line amount";
-      const amount = cents(cells[map.amount!]);
+      const amount =
+        recipe === "cashflow" && bothSides
+          ? splitCents(cells[map.debit!], cells[map.credit!])
+          : cents(cells[map.amount!]);
       field = "Order ID";
-      let order = orderColumn === null ? null : raw(cells[orderColumn]);
+      const order =
+        orderColumn === null ? null : identifier(cells[orderColumn]);
       if (order === "") fail("Mapped order IDs cannot be blank.");
-      if (orderColumn !== null) {
-        const c = cells[orderColumn];
-        if (typeof c === "object" && c.t === "n") {
-          if (
-            !Number.isSafeInteger(c.v) ||
-            Math.abs(Number(c.v)) >= 1e15 ||
-            !/^\d+$/.test(c.w ?? String(c.v))
-          )
-            fail("Save order IDs with ambiguous formatting as text.");
-          order = c.w ?? String(c.v);
-        }
+      if (order !== null && storeCol >= 0) {
+        const outlet = raw(cells[storeCol]);
+        if (orderStores.has(order) && orderStores.get(order) !== outlet)
+          fail(
+            "This order ID occurs in multiple stores. Use a globally unique ID or split by store.",
+          );
+        orderStores.set(order, outlet);
       }
       field = recipe === "cashflow" ? "Category" : "Sales category";
       const category =

@@ -72,6 +72,7 @@ export interface Inventory {
   }[];
 }
 export interface Snapshot {
+  sha256: string;
   name: string;
   bytes: string;
   token: string;
@@ -81,7 +82,7 @@ export interface History {
   skipped: number;
   items: {
     id: string;
-    recipe?: import("./recipes").RecipeId;
+    recipe?: import("./recipes").RecipeId | "payout";
     source: string;
     created: string;
     rows: number;

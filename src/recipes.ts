@@ -40,7 +40,7 @@ export const recipes = {
     material: "Cash ledger",
     grain: "One posted cash transaction per row",
     guide:
-      "Map a transaction date and a signed amount. Receipts are positive and payments are negative. Category and currency are optional.",
+      "Map one signed amount OR both debit and credit columns. A single side cannot represent net cash.",
     parts:
       "Cash in, cash out, net movement and transaction count. Charts show monthly net movement and spending by category.",
     footer:

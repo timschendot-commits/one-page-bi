@@ -1,6 +1,13 @@
 import type { RecipeId } from "./recipes";
 import type { Language, Message } from "./i18n";
-export type Field = "date" | "amount" | "order" | "category" | "currency";
+export type Field =
+  | "date"
+  | "amount"
+  | "order"
+  | "category"
+  | "currency"
+  | "debit"
+  | "credit";
 export type Mapping = Record<Field, number | null>;
 export interface Sale {
   row: number;
@@ -62,13 +69,44 @@ export const fields: {
     aliases: ["币种", "货币", "currency", "currencycode"],
   },
 ];
+export const keyName = (s: string) => s.toLowerCase().replace(/[\s_-]/g, "");
+export const debitNames = [
+  "debit",
+  "debitamount",
+  "withdrawal",
+  "withdrawals",
+  "moneyout",
+  "借方",
+  "借方金额",
+  "支出",
+  "付款",
+];
+export const creditNames = [
+  "credit",
+  "creditamount",
+  "deposit",
+  "deposits",
+  "moneyin",
+  "贷方",
+  "贷方金额",
+  "收入",
+  "收款",
+];
+export function directionHeader(s: string) {
+  return [...debitNames, ...creditNames].includes(keyName(s));
+}
+export function shortOrderHeader(s: string) {
+  return ["shortorderid", "shortorderno", "短订单号", "订单短号"].includes(
+    keyName(s),
+  );
+}
 export function fieldsFor(recipe: RecipeId) {
   if (recipe === "sales") return fields;
   if (recipe === "orders")
     return fields.map((f) =>
       f.key === "order" ? { ...f, required: true } : f,
     );
-  return fields
+  const base = fields
     .filter((f) => f.key !== "order")
     .map((f) => {
       if (f.key === "date")
@@ -88,6 +126,7 @@ export function fieldsFor(recipe: RecipeId) {
       if (f.key === "amount")
         return {
           ...f,
+          required: false,
           title: "Signed amount" as const,
           aliases: [
             "amount",
@@ -116,13 +155,30 @@ export function fieldsFor(recipe: RecipeId) {
         };
       return f;
     });
+  return [
+    ...base,
+    {
+      key: "debit" as const,
+      title: "Debit / money out" as const,
+      aliases: debitNames,
+      required: false,
+    },
+    {
+      key: "credit" as const,
+      title: "Credit / money in" as const,
+      aliases: creditNames,
+      required: false,
+    },
+  ];
 }
 export function suggest(
   headers: string[],
   recipe: RecipeId = "sales",
 ): Mapping {
   const key = (s: string) => s.toLowerCase().replace(/[\s_-]/g, "");
-  return {
+  const result = {
+    debit: null,
+    credit: null,
     order: null,
     ...Object.fromEntries(
       fieldsFor(recipe).map((f) => {
@@ -133,6 +189,13 @@ export function suggest(
       }),
     ),
   } as Mapping;
+  const longID = headers.findIndex((h) =>
+    ["longorderid", "长订单号", "订单长号"].includes(keyName(h)),
+  );
+  if (recipe !== "cashflow" && longID >= 0) result.order = longID;
+  if (recipe === "cashflow" && result.debit !== null && result.credit !== null)
+    result.amount = null;
+  return result;
 }
 export function metrics(rows: Sale[], hasOrders: boolean) {
   let total = 0;

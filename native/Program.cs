@@ -90,6 +90,7 @@ namespace OnePageBI {
     }
     string L(string en,string zh){return store.Language=="zh-CN"?zh:en;}
     object Dispatch(string method,Dictionary<string,object> d){
+      string role=d.ContainsKey("role")?(string)d["role"]:"main";
       switch(method){
         case "inventory": return store.Inventory();
         case "desktop": store.Folder=store.Desktop;return store.Inventory();
@@ -101,9 +102,9 @@ namespace OnePageBI {
         case "selectFile":
           using(var dlg=new OpenFileDialog {Title=L("Choose data file","选择数据文件"),Filter=L("Data files","数据文件")+" (*.csv;*.xlsx)|*.csv;*.xlsx",InitialDirectory=store.Folder}){
             if(dlg.ShowDialog(this)!=DialogResult.OK)return null;
-            store.Folder=Path.GetDirectoryName(dlg.FileName);return store.Load(Path.GetFileName(dlg.FileName));
+            store.Folder=Path.GetDirectoryName(dlg.FileName);return store.Load(Path.GetFileName(dlg.FileName),role);
           }
-        case "load":return store.Load((string)d["name"]);
+        case "load":return store.Load((string)d["name"],role);
         case "putOnDesktop":return store.PutOnDesktop((string)d["archiveId"]);
         case "inventoryReport":Open(store.InventoryReport((string)d["name"]));return true;
         case "archive":return store.Archive(d);

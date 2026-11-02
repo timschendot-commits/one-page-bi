@@ -725,3 +725,11 @@ dialog:has(.largepreview) {
     line-height: 1.1;
   }
 }
+
+.workcase[hidden] {
+  display: none;
+}
+.material.over {
+  outline: 3px solid var(--green);
+  outline-offset: -3px;
+}

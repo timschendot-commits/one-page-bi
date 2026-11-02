@@ -1,15 +1,20 @@
 import { build } from "esbuild";
 import { mkdir, copyFile } from "node:fs/promises";
 await mkdir("dist", { recursive: true });
-const report = await build({
-  entryPoints: ["src/report-entry.ts"],
-  bundle: true,
-  minify: true,
-  format: "iife",
-  target: "es2022",
-  write: false,
-  legalComments: "inline",
-});
+const bundle = (entry) =>
+  build({
+    entryPoints: [entry],
+    bundle: true,
+    minify: true,
+    format: "iife",
+    target: "es2022",
+    write: false,
+    legalComments: "inline",
+  });
+const [report, payout] = await Promise.all([
+  bundle("src/report-entry.ts"),
+  bundle("src/payout-entry.ts"),
+]);
 await build({
   entryPoints: ["src/app.tsx"],
   outfile: "dist/app.js",
@@ -22,12 +27,13 @@ await build({
     {
       name: "standalone-report",
       setup(b) {
-        b.onResolve({ filter: /^virtual:report-script$/ }, () => ({
-          path: "report",
+        b.onResolve({ filter: /^virtual:(report|payout)-script$/ }, (args) => ({
+          path: args.path,
           namespace: "embedded",
         }));
-        b.onLoad({ filter: /.*/, namespace: "embedded" }, () => ({
-          contents: report.outputFiles[0].text,
+        b.onLoad({ filter: /.*/, namespace: "embedded" }, (args) => ({
+          contents: (args.path === "virtual:payout-script" ? payout : report)
+            .outputFiles[0].text,
           loader: "text",
         }));
       },

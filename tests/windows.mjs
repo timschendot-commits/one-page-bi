@@ -1,3 +1,4 @@
+import { payoutDesktop, payoutOffline } from "./payout-windows.mjs";
 import { chromium } from "playwright-core";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
@@ -264,7 +265,7 @@ try {
   const previewZh = await page.locator(".thumb img").getAttribute("src");
   assert.notEqual(previewZh, previewBefore);
   const previewExport = path.join(profile, "preview-zh.png");
-  await Promise.all([fillNativeDialog(previewExport), click("导出 PNG")]);
+  await Promise.all([fillNativeDialog(previewExport), click("导出汇总 PNG")]);
   await page.getByText("已导出 PNG。").waitFor();
   assert.ok(
     (await readFile(previewExport)).equals(
@@ -352,11 +353,12 @@ try {
       .locator(".histitem")
       .filter({ hasText: "actual.csv" })
       .first()
-      .getByRole("button", { name: "导出 PNG" })
+      .getByRole("button", { name: "导出汇总 PNG" })
       .click(),
   ]);
   await page.getByText("已导出 PNG。").waitFor();
   assert.ok((await readFile(target)).equals(png));
+  const payoutFile = await payoutDesktop(page, { desktop, reports, out });
   await closeApp();
   const edgePath =
     process.env.EDGE_PATH ||
@@ -468,9 +470,10 @@ try {
     (await cashPNG).suggestedFilename(),
     /Cash flow statement_2026-02/,
   );
+  await payoutOffline(portable, payoutFile, out);
   assert.deepEqual(stray, []);
   console.log(
-    "PASS: desktop drag and inventory discovery, collision and repeat drops, three recipes, bilingual offline HTML and PNG, archives and restart.",
+    "PASS: desktop drag and inventory discovery, collision and repeat drops, three recipes, dual-source payout checks, restored mappings, XLSX snapshots, offline exception CSV and summary PNG, archives and restart.",
   );
 } finally {
   await edge?.close();

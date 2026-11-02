@@ -22,8 +22,11 @@ namespace OnePageBI {
     }
     internal readonly string Reports, Desktop;
     internal string Folder;
-    internal byte[] Snapshot;
-    internal string SourceName, Token, Hash;
+    sealed class InputCopy {
+      internal string Name, Token, Hash, Role;
+      internal byte[] Bytes;
+    }
+    readonly Dictionary<string,InputCopy> snapshots=new Dictionary<string,InputCopy>();
     internal readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 64*1024*1024, RecursionLimit=128 };
     static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
     const int MaxInput = 5*1024*1024;
@@ -58,7 +61,8 @@ namespace OnePageBI {
         .OrderByDescending(f=>f.LastWriteTimeUtc).ThenBy(f=>f.Name,StringComparer.OrdinalIgnoreCase)
         .Select(f=>new {name=f.Name,kind=IsReport(f.Name)?"report":"data",size=f.Length,modified=f.LastWriteTimeUtc.ToString("o")}).ToArray()};
     }
-    internal object Load(string name) {
+    internal object Load(string name,string role) {
+      if(role!="main" && role!="settlement" && role!="bank")throw new InvalidDataException();
       var file=InventoryItem(name,false);
       byte[] input;
       using(var s=new FileStream(file.FullName,FileMode.Open,FileAccess.Read,FileShare.Read)){
@@ -71,24 +75,36 @@ namespace OnePageBI {
             throw new DesktopError("Unsupported workbook or above the unpacked limit of 32 MiB or 2,000 entries.","不支持该工作簿结构，或解压后超过 32 MiB / 2,000 项。");
         }
       }
-      Snapshot=input; SourceName=name; Token=Guid.NewGuid().ToString("N");
-      using(var sha=SHA256.Create()) Hash=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","").ToLowerInvariant();
-      return new {name=name,token=Token,bytes=Convert.ToBase64String(input)};
+      var copy=new InputCopy{Name=name,Role=role,Bytes=input,Token=Guid.NewGuid().ToString("N")};
+      using(var sha=SHA256.Create()) copy.Hash=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","").ToLowerInvariant();
+      snapshots[role]=copy;
+      return new {name=name,token=copy.Token,sha256=copy.Hash,bytes=Convert.ToBase64String(input)};
+    }
+    InputCopy RequireCopy(string role,string token){
+      InputCopy copy;
+      if(!snapshots.TryGetValue(role,out copy) || copy.Token!=token)throw new DesktopError("The input changed. Reload it and check the mapping again.","数据快照已更换，请重新载入并确认字段。");
+      return copy;
     }
     internal string Archive(Dictionary<string,object> d) {
-      if(Snapshot==null || (string)d["token"]!=Token) throw new DesktopError("The source changed. Reload it and check the mapping again.","数据快照已更换，请重新载入并确认字段。");
+      string recipe=(string)d["recipe"];
+      var copies=recipe=="payout"?new[]{RequireCopy("settlement",(string)d["token"]),RequireCopy("bank",(string)d["bankToken"])}:new[]{RequireCopy("main",(string)d["token"])};
+      var first=copies[0];
       Directory.CreateDirectory(Reports);
       string id=Guid.NewGuid().ToString("N"), stage=Path.Combine(Reports,".partial-"+id), dest=Path.Combine(Reports,id);
       Directory.CreateDirectory(stage);
       try{
         foreach(string sub in new[]{"inputs","data","dashboard","exports"}) Directory.CreateDirectory(Path.Combine(stage,sub));
-        File.WriteAllBytes(Path.Combine(stage,"inputs",SourceName),Snapshot);
+        foreach(var copy in copies){
+          var dir=Path.Combine(stage,"inputs",copy.Role=="main"?"":copy.Role);
+          Directory.CreateDirectory(dir);
+          File.WriteAllBytes(Path.Combine(dir,copy.Name),copy.Bytes);
+        }
         File.WriteAllText(Path.Combine(stage,"data","processed.json"),(string)d["processed"],Utf8);
         File.WriteAllText(Path.Combine(stage,"dashboard","report.html"),(string)d["html"],Utf8);
         File.WriteAllText(Path.Combine(stage,"template.json"),(string)d["template"],Utf8);
         byte[] png=ReadPng((string)d["png"]);
         File.WriteAllBytes(Path.Combine(stage,"exports","report.png"),png);
-        var meta=new {id=id,created=(string)d["created"],source=SourceName,sha256=Hash,rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=(string)d["recipe"],appVersion="0.2.0",language=Language,schemaVersion=1};
+        var meta=new {id=id,created=(string)d["created"],source=first.Name,sha256=first.Hash,sources=copies.Select(c=>new {role=c.Role,name=c.Name,sha256=c.Hash}).ToArray(),rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=recipe,appVersion="0.3.0",language=Language,schemaVersion=1};
         File.WriteAllText(Path.Combine(stage,"metadata.json"),Json.Serialize(meta),Utf8);
         Directory.Move(stage,dest);
       } finally {if(Directory.Exists(stage)) Directory.Delete(stage,true);}
@@ -110,7 +126,7 @@ namespace OnePageBI {
       string html=ItemPath(id,@"dashboard\report.html");
       var meta=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(ItemPath(id,"metadata.json")));
       string recipe=Convert.ToString(meta.ContainsKey("recipe")?meta["recipe"]:"sales");
-      if(recipe!="sales" && recipe!="orders" && recipe!="cashflow") throw new DesktopError("Unknown recipe.","无法识别配方。");
+      if(recipe!="sales" && recipe!="orders" && recipe!="cashflow" && recipe!="payout") throw new DesktopError("Unknown recipe.","无法识别配方。");
       string source=Path.GetFileNameWithoutExtension((string)meta["source"]);
       string shortName=new string(source.Where(c=>Array.IndexOf(Path.GetInvalidFileNameChars(),c)<0).Take(42).ToArray()).TrimEnd(' ','.');
       if(shortName.Length>0 && Char.IsHighSurrogate(shortName[shortName.Length-1]))shortName=shortName.Substring(0,shortName.Length-1);

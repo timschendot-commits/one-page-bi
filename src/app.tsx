@@ -1,3 +1,6 @@
+import { Modal } from "./Modal";
+import { PayoutWorkbench } from "./PayoutWorkbench";
+import { recall, remember } from "./mapping-memory";
 import {
   dashboard,
   recipes,
@@ -5,13 +8,7 @@ import {
   exampleName,
   type RecipeId,
 } from "./recipes";
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   call,
@@ -46,6 +43,8 @@ import {
 import "./style.css";
 
 const emptyMap: Mapping = {
+  debit: null,
+  credit: null,
   date: null,
   amount: null,
   order: null,
@@ -61,39 +60,13 @@ const dateTime = (s: string, language: Language) =>
     minute: "2-digit",
     hour12: false,
   });
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const { t } = useLanguage();
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    ref.current?.showModal();
-  }, []);
-  return (
-    <dialog ref={ref} onCancel={onClose}>
-      <div className="modalhead">
-        <h2>{title}</h2>
-        <LanguageButton />
-        <button aria-label={t("Close")} onClick={onClose}>
-          ×
-        </button>
-      </div>
-      {children}
-    </dialog>
-  );
-}
 function App() {
   const { language, t } = useLanguage();
   const [tab, setTab] = useState("work"),
     [modal, setModal] = useState(""),
     [busy, setBusy] = useState(false),
     lock = useRef(false);
+  const [payout, setPayout] = useState(false);
   const [recipeId, setRecipeId] = useState<RecipeId>("sales"),
     recipe = recipes[recipeId],
     fields = fieldsFor(recipeId);
@@ -174,15 +147,21 @@ function App() {
     clearOutput();
     const t = s.table(name);
     setTable(t);
-    setMap(suggest(t.headers, recipeId));
+    setMap(recall(recipeId, t.headers, suggest(t.headers, recipeId)));
   }
   function chooseRecipe(next: RecipeId) {
-    if (next === recipeId || busy) return;
+    if (busy) return;
+    setPayout(false);
+    if (next === recipeId) return;
     setRecipeId(next);
     clearOutput();
     setError(null);
     setNotice("");
-    setMap(table ? suggest(table.headers, next) : emptyMap);
+    setMap(
+      table
+        ? recall(next, table.headers, suggest(table.headers, next))
+        : emptyMap,
+    );
   }
   async function putInBag(archiveId: string) {
     if (!archiveId || archiveId !== id) return;
@@ -217,6 +196,7 @@ function App() {
   function confirmMap() {
     if (!table || !snapshot) return;
     const r = validate(table, map, snapshot.name, unit, recipeId);
+    remember(recipeId, table.headers, map);
     setReport(r);
     setId("");
     setModal("");
@@ -229,7 +209,7 @@ function App() {
     paint(c, r, r.rows, language);
     const png = c.toDataURL("image/png");
     const tpl = {
-      appVersion: "0.2.0",
+      appVersion: "0.3.0",
       language,
       template: recipeId,
       version: 1,
@@ -311,7 +291,7 @@ function App() {
         <div className="brand">
           <Icon kind="cube" size={35} />
           One Page <b>BI</b>
-          <span>V0.2.0</span>
+          <span>V0.3.0</span>
         </div>
         <nav>
           <button
@@ -339,7 +319,7 @@ function App() {
       <main>
         {tab === "history" && <h1>{t("History")}</h1>}
         {modal !== "mapping" && (error || tab === "history") && status}
-        {tab === "history" ? (
+        {tab === "history" && (
           <section className="panel history">
             <div className="panelhead">
               <span>
@@ -364,17 +344,22 @@ function App() {
                   <div>
                     <strong>{h.source}</strong>
                     <small>
-                      {t((recipes[h.recipe ?? "sales"] ?? recipes.sales).name)}{" "}
+                      {t(
+                        h.recipe === "payout"
+                          ? "Payout check"
+                          : (recipes[h.recipe ?? "sales"] ?? recipes.sales)
+                              .name,
+                      )}{" "}
                       · {dateTime(h.created, language)} · {h.sheet} ·{" "}
                       {rowCount(h.rows, language)}
                     </small>
                   </div>
                   <div className="actions">
                     <button onClick={() => action("report", h.id)}>
-                      {t("Open report")}
+                      {t("Open detailed report")}
                     </button>
                     <button onClick={() => action("exportPng", h.id)}>
-                      {t("Export PNG")}
+                      {t("Save summary PNG")}
                     </button>
                     <button onClick={() => action("archiveFolder", h.id)}>
                       {t("Show folder")}
@@ -388,280 +373,317 @@ function App() {
               </div>
             )}
           </section>
-        ) : (
-          <div className="workcase">
-            <aside className="library">
-              <h2>{t("Templates")}</h2>
-              {recipeIds.map((k) => (
-                <button
-                  key={k}
-                  className="bookitem"
-                  title={t(recipes[k].title)}
-                  aria-pressed={recipeId === k}
-                  disabled={busy}
-                  onClick={() => chooseRecipe(k)}
-                >
-                  <Icon
-                    kind={
-                      k === "cashflow"
-                        ? "chart"
-                        : k === "orders"
-                          ? "file"
-                          : "book"
-                    }
-                    size={23}
-                  />
-                  <b>{t(recipes[k].name)}</b>
-                </button>
-              ))}
-              <button className="refbtn" onClick={() => setModal("recipe")}>
-                <Icon kind="tree" size={19} />
-                {t("Recipe")}
-              </button>
-              <button className="refbtn" onClick={() => setModal("components")}>
-                <Icon kind="map" size={19} />
-                {t("Parts")}
-              </button>
-            </aside>
-            <section className="bench">
-              <h1>{t("Report workbench")}</h1>
-              <div className="craftline">
-                <div
-                  className={"materials " + (drag ? "over" : "")}
-                  aria-label={t("3 by 3 material grid")}
-                  onDragOver={(e) => {
-                    if (
-                      !e.dataTransfer.types.includes("application/x-onepagebi")
-                    )
-                      return;
-                    e.preventDefault();
-                    setDrag(true);
-                  }}
-                  onDragLeave={(e) => {
-                    if (
-                      !(e.relatedTarget instanceof Node) ||
-                      !e.currentTarget.contains(e.relatedTarget)
-                    )
-                      setDrag(false);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDrag(false);
-                    const name = e.dataTransfer.getData(
-                      "application/x-onepagebi",
-                    );
-                    if (name) void run(() => load(name));
-                    else
-                      setError(
-                        new LocalizedError((lang) =>
-                          translator(lang)(
-                            "Drag a data file from the inventory or click the input slot.",
-                          ),
-                        ),
-                      );
-                  }}
-                >
-                  {Array.from({ length: 9 }, (_, i) => {
-                    if (i === 3)
-                      return (
-                        <button
-                          key={i}
-                          className={
-                            "tile material " + (snapshot ? "has-item" : "ghost")
-                          }
-                          aria-label={t("Choose input file")}
-                          title={
-                            snapshot?.name ??
-                            t("Drop a data file here or click to browse")
-                          }
-                          onClick={() => run(() => load())}
-                        >
-                          <Icon kind="file" size={40} />
-                          <b>{t(recipe.material)}</b>
-                        </button>
-                      );
-                    if (i === 4)
-                      return (
-                        <button
-                          key={i}
-                          className={
-                            "tile material " + (report ? "has-item" : "ghost")
-                          }
-                          aria-label={t("Review field mapping")}
-                          title={t("Review field mapping")}
-                          disabled={!table}
-                          onClick={openMap}
-                        >
-                          <Icon kind="map" size={40} />
-                          <b>{report ? t("Checked") : t("Map fields")}</b>
-                        </button>
-                      );
-                    return (
-                      <span
-                        className="tile vacant"
-                        key={i}
-                        aria-hidden="true"
-                      />
-                    );
-                  })}
-                </div>
-                <div
-                  className={"recipe-arrow " + (report ? "ready" : "")}
-                  aria-hidden="true"
+        )}
+        <div className="workcase" hidden={tab !== "work"}>
+          <aside className="library">
+            <h2>{t("Templates")}</h2>
+            {recipeIds.map((k) => (
+              <button
+                key={k}
+                className="bookitem"
+                title={t(recipes[k].title)}
+                aria-pressed={!payout && recipeId === k}
+                disabled={busy}
+                onClick={() => chooseRecipe(k)}
+              >
+                <Icon
+                  kind={
+                    k === "cashflow"
+                      ? "chart"
+                      : k === "orders"
+                        ? "file"
+                        : "book"
+                  }
+                  size={23}
                 />
-                <button
-                  key={id}
-                  draggable={Boolean(id) && !busy}
-                  onDragStart={(e) => {
-                    if (!id) {
+                <b>{t(recipes[k].name)}</b>
+              </button>
+            ))}
+            <button
+              className="bookitem"
+              aria-label={t("Payout check")}
+              aria-pressed={payout}
+              disabled={busy}
+              onClick={() => {
+                setPayout(true);
+                setError(null);
+                setNotice("");
+              }}
+            >
+              <Icon kind="map" size={23} />
+              <b>{t("Payouts")}</b>
+            </button>
+            <button className="refbtn" onClick={() => setModal("recipe")}>
+              <Icon kind="tree" size={19} />
+              {t("Recipe")}
+            </button>
+            <button className="refbtn" onClick={() => setModal("components")}>
+              <Icon kind="map" size={19} />
+              {t("Parts")}
+            </button>
+          </aside>
+          <PayoutWorkbench
+            active={payout && tab === "work"}
+            inventory={inventory}
+            setInventory={setInv}
+            onFolder={inv}
+          />
+          {!payout && tab === "work" && (
+            <>
+              <section className="bench">
+                <h1>{t("Report workbench")}</h1>
+                <div className="craftline">
+                  <div
+                    className={"materials " + (drag ? "over" : "")}
+                    aria-label={t("3 by 3 material grid")}
+                    onDragOver={(e) => {
+                      if (
+                        !e.dataTransfer.types.includes(
+                          "application/x-onepagebi",
+                        )
+                      )
+                        return;
                       e.preventDefault();
-                      return;
+                      setDrag(true);
+                    }}
+                    onDragLeave={(e) => {
+                      if (
+                        !(e.relatedTarget instanceof Node) ||
+                        !e.currentTarget.contains(e.relatedTarget)
+                      )
+                        setDrag(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDrag(false);
+                      const name = e.dataTransfer.getData(
+                        "application/x-onepagebi",
+                      );
+                      if (name) void run(() => load(name));
+                      else
+                        setError(
+                          new LocalizedError((lang) =>
+                            translator(lang)(
+                              "Drag a data file from the inventory or click the input slot.",
+                            ),
+                          ),
+                        );
+                    }}
+                  >
+                    {Array.from({ length: 9 }, (_, i) => {
+                      if (i === 3)
+                        return (
+                          <button
+                            key={i}
+                            className={
+                              "tile material " +
+                              (snapshot ? "has-item" : "ghost")
+                            }
+                            aria-label={t("Choose input file")}
+                            title={
+                              snapshot?.name ??
+                              t("Drop a data file here or click to browse")
+                            }
+                            onClick={() => run(() => load())}
+                          >
+                            <Icon kind="file" size={40} />
+                            <b>{t(recipe.material)}</b>
+                          </button>
+                        );
+                      if (i === 4)
+                        return (
+                          <button
+                            key={i}
+                            className={
+                              "tile material " + (report ? "has-item" : "ghost")
+                            }
+                            aria-label={t("Review field mapping")}
+                            title={t("Review field mapping")}
+                            disabled={!table}
+                            onClick={openMap}
+                          >
+                            <Icon kind="map" size={40} />
+                            <b>{report ? t("Checked") : t("Map fields")}</b>
+                          </button>
+                        );
+                      return (
+                        <span
+                          className="tile vacant"
+                          key={i}
+                          aria-hidden="true"
+                        />
+                      );
+                    })}
+                  </div>
+                  <div
+                    className={"recipe-arrow " + (report ? "ready" : "")}
+                    aria-hidden="true"
+                  />
+                  <button
+                    key={id}
+                    draggable={Boolean(id) && !busy}
+                    onDragStart={(e) => {
+                      if (!id) {
+                        e.preventDefault();
+                        return;
+                      }
+                      e.dataTransfer.effectAllowed = "copy";
+                      e.dataTransfer.setData(resultDragType, id);
+                    }}
+                    className={
+                      "tile result " +
+                      (report ? "ready " : "") +
+                      (id ? "crafted" : "")
                     }
-                    e.dataTransfer.effectAllowed = "copy";
-                    e.dataTransfer.setData(resultDragType, id);
-                  }}
-                  className={
-                    "tile result " +
-                    (report ? "ready " : "") +
-                    (id ? "crafted" : "")
-                  }
-                  disabled={!report || busy}
-                  onClick={() => (id ? action("report", id) : run(craft))}
-                  aria-label={
-                    id ? t("View the finished report") : t("Craft and archive")
-                  }
-                  title={
-                    id
-                      ? t(
-                          "Click to open, or drag to the inventory to save on Desktop",
-                        )
-                      : t("Click to craft and archive a report")
-                  }
-                >
-                  <Icon kind="chart" size={54} />
-                  <b>{busy ? t("Working…") : id ? t("Report") : t("Craft")}</b>
-                </button>
-              </div>
-              {source && source.sheets.length > 1 && (
-                <label className="sheet">
-                  {t("Worksheet")}{" "}
-                  <select
-                    aria-label={t("Worksheet")}
-                    value={sheet}
-                    onChange={(e) =>
-                      run(async () => {
-                        selectSheet(source, e.target.value);
-                        setModal("mapping");
-                      })
+                    disabled={!report || busy}
+                    onClick={() => (id ? action("report", id) : run(craft))}
+                    aria-label={
+                      id
+                        ? t("View the finished report")
+                        : t("Craft and archive")
+                    }
+                    title={
+                      id
+                        ? t(
+                            "Click to open, or drag to the inventory to save on Desktop",
+                          )
+                        : t("Click to craft and archive a report")
                     }
                   >
-                    {source.sheets.map((n) => (
-                      <option key={n}>{n}</option>
+                    <Icon kind="chart" size={54} />
+                    <b>
+                      {busy ? t("Working…") : id ? t("Report") : t("Craft")}
+                    </b>
+                  </button>
+                </div>
+                {source && source.sheets.length > 1 && (
+                  <label className="sheet">
+                    {t("Worksheet")}{" "}
+                    <select
+                      aria-label={t("Worksheet")}
+                      value={sheet}
+                      onChange={(e) =>
+                        run(async () => {
+                          selectSheet(source, e.target.value);
+                          setModal("mapping");
+                        })
+                      }
+                    >
+                      {source.sheets.map((n) => (
+                        <option key={n}>{n}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div className="benchstatus">
+                  <p className="instruction" role="status">
+                    {(notice && t(notice)) ||
+                      (report
+                        ? t(
+                            "Click the output slot to craft and archive your report.",
+                          )
+                        : snapshot
+                          ? t("Click the mapping slot to review your data.")
+                          : t(
+                              "Drag a data file from the inventory to the grid.",
+                            ))}
+                  </p>
+                  {id && (
+                    <button
+                      className="textbtn"
+                      disabled={busy}
+                      onClick={() => run(() => putInBag(id))}
+                      title={t(
+                        "Save a desktop copy and show it in the inventory",
+                      )}
+                    >
+                      {t("To inventory")}
+                    </button>
+                  )}
+                  {id && (
+                    <button
+                      className="textbtn"
+                      aria-label={t("Craft and archive again")}
+                      onClick={() => run(craft)}
+                    >
+                      {t("Craft again")}
+                    </button>
+                  )}
+                </div>
+              </section>
+              <section className="preview">
+                <h2>{t("Report preview")}</h2>
+                <div className="displayframe">
+                  {thumb ? (
+                    <button
+                      className="thumb"
+                      aria-label={t("Enlarge report preview")}
+                      onClick={() => setModal("preview")}
+                    >
+                      <img src={thumb} alt={t(recipe.title)} />
+                    </button>
+                  ) : (
+                    <div className="screenempty">
+                      <Icon kind="chart" size={55} />
+                      <span>{t("Waiting for a data file")}</span>
+                    </div>
+                  )}
+                </div>
+                {report && (
+                  <div className="peek">
+                    {previewCards.map(([label, value]) => (
+                      <div key={label}>
+                        <small>{label}</small>
+                        <b>{value}</b>
+                      </div>
                     ))}
-                  </select>
-                </label>
-              )}
-              <div className="benchstatus">
-                <p className="instruction" role="status">
-                  {(notice && t(notice)) ||
-                    (report
-                      ? t(
-                          "Click the output slot to craft and archive your report.",
-                        )
-                      : snapshot
-                        ? t("Click the mapping slot to review your data.")
-                        : t(
-                            "Drag a data file from the inventory to the grid.",
-                          ))}
-                </p>
-                {id && (
-                  <button
-                    className="textbtn"
-                    disabled={busy}
-                    onClick={() => run(() => putInBag(id))}
-                    title={t(
-                      "Save a desktop copy and show it in the inventory",
-                    )}
-                  >
-                    {t("To inventory")}
-                  </button>
-                )}
-                {id && (
-                  <button
-                    className="textbtn"
-                    aria-label={t("Craft and archive again")}
-                    onClick={() => run(craft)}
-                  >
-                    {t("Craft again")}
-                  </button>
-                )}
-              </div>
-            </section>
-            <section className="preview">
-              <h2>{t("Report preview")}</h2>
-              <div className="displayframe">
-                {thumb ? (
-                  <button
-                    className="thumb"
-                    aria-label={t("Enlarge report preview")}
-                    onClick={() => setModal("preview")}
-                  >
-                    <img src={thumb} alt={t(recipe.title)} />
-                  </button>
-                ) : (
-                  <div className="screenempty">
-                    <Icon kind="chart" size={55} />
-                    <span>{t("Waiting for a data file")}</span>
                   </div>
                 )}
-              </div>
-              {report && (
-                <div className="peek">
-                  {previewCards.map(([label, value]) => (
-                    <div key={label}>
-                      <small>{label}</small>
-                      <b>{value}</b>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {id && (
-                <div className="prevactions">
-                  <button onClick={() => action("report", id)}>
-                    {t("Open report")} ↗
-                  </button>
-                  <button onClick={() => action("exportPng", id)}>
-                    {t("Export PNG")}
-                  </button>
-                </div>
-              )}
-            </section>
-            <InventoryPanel
-              key={inventory.folder + ":" + reveal.revision}
-              revealName={reveal.name}
-              onResultDrop={(value) => void run(() => putInBag(value))}
-              onReport={(name) =>
-                void run(async () => {
-                  await call("inventoryReport", { name });
-                })
-              }
-              inventory={
-                inventory.isExamples
-                  ? {
-                      ...inventory,
-                      files: inventory.files.filter(
-                        (f) =>
-                          f.kind === "report" ||
-                          f.name === exampleName(recipeId, language),
-                      ),
-                    }
-                  : inventory
-              }
-              onFolder={(m) => void run(() => inv(m))}
-              onLoad={(n) => void run(() => load(n))}
-            />
-          </div>
-        )}
+                {id && (
+                  <small className="hint">
+                    {t(
+                      "HTML includes transaction details. PNG contains totals only.",
+                    )}
+                  </small>
+                )}
+                {id && (
+                  <div className="prevactions">
+                    <button onClick={() => action("report", id)}>
+                      {t("Open detailed report")} ↗
+                    </button>
+                    <button onClick={() => action("exportPng", id)}>
+                      {t("Save summary PNG")}
+                    </button>
+                  </div>
+                )}
+              </section>
+              <InventoryPanel
+                key={inventory.folder + ":" + reveal.revision}
+                revealName={reveal.name}
+                onResultDrop={(value) => void run(() => putInBag(value))}
+                onReport={(name) =>
+                  void run(async () => {
+                    await call("inventoryReport", { name });
+                  })
+                }
+                inventory={
+                  inventory.isExamples
+                    ? {
+                        ...inventory,
+                        files: inventory.files.filter(
+                          (f) =>
+                            f.kind === "report" ||
+                            f.name === exampleName(recipeId, language),
+                        ),
+                      }
+                    : inventory
+                }
+                onFolder={(m) => void run(() => inv(m))}
+                onLoad={(n) => void run(() => load(n))}
+              />
+            </>
+          )}
+        </div>
       </main>
       {modal === "mapping" && table && (
         <Modal
@@ -699,6 +721,11 @@ function App() {
             {snapshot?.name} · {sheet} ·{" "}
             {rowCount(table.lines.length, language)}
           </small>
+          <p className="help">
+            {t(
+              "Confirmed mappings are reused for the same headers. Check the sample values each time.",
+            )}
+          </p>
           <div className="mapping">
             {fields.map((f) => (
               <label key={f.key}>
@@ -773,21 +800,41 @@ function App() {
       )}
       {(modal === "components" || modal === "recipe") && (
         <Modal
-          title={modal === "recipe" ? t(recipe.title) : t("Report components")}
+          title={
+            modal === "recipe"
+              ? t(payout ? "Payout check" : recipe.title)
+              : t("Report components")
+          }
           onClose={() => setModal("")}
         >
-          <p>{t(modal === "recipe" ? recipe.guide : recipe.parts)}</p>
-          <p>{t(recipe.footer)}</p>
+          <p>
+            {t(
+              payout
+                ? "Compare the platform payout file with the bank statement. Drop each file in its own slot."
+                : modal === "recipe"
+                  ? recipe.guide
+                  : recipe.parts,
+            )}
+          </p>
+          <p>
+            {t(
+              payout
+                ? "A unique matching code, exact positive amount and a bank date within seven days are required."
+                : recipe.footer,
+            )}
+          </p>
           <p>
             {t(
               "Drag the finished item onto the inventory to save a desktop copy.",
             )}
           </p>
-          <p className="help">
-            {t(
-              "Use one table and one currency per report. Profit analysis, forecasting, joins and Power BI PBIP export are not supported.",
-            )}
-          </p>
+          {!payout && (
+            <p className="help">
+              {t(
+                "Use one table and one currency per report. Profit analysis, forecasting, joins and Power BI PBIP export are not supported.",
+              )}
+            </p>
+          )}
         </Modal>
       )}
       {modal === "preview" && (

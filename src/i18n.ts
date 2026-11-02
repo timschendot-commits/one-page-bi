@@ -1,6 +1,135 @@
 export type Language = "en" | "zh-CN";
 
 const chinese = {
+  Payouts: "到账核对",
+  "Payout file": "平台账单",
+  "Bank file": "银行流水",
+  "Waiting for both files": "等待两份材料",
+  "See exceptions": "查看待查明细",
+  "Choose a slot": "放到哪个格子？",
+  "Replace file…": "换一份文件…",
+  "Both files are ready. Click Craft to check payouts.":
+    "材料齐了，点击成品格核对到账。",
+  "Drop the platform and bank files into their slots.":
+    "把平台账单和银行流水分别放进格子。",
+  "Compare the platform payout file with the bank statement. Drop each file in its own slot.":
+    "把平台结算单与银行流水分别放进材料格，核对每批打款。",
+  "A unique matching code, exact positive amount and a bank date within seven days are required.":
+    "双方参考码唯一、正数金额相等且在结算当日至其后七天入账，才会标为已核对。",
+  "Retain both original lines as evidence.": "保留两侧原始记录作为凭据。",
+  "Check fees, adjustments and the bank entry for this payout reference.":
+    "按该参考码核查手续费、调整项和银行入账。",
+  "Check a later statement before treating the payout as missing.":
+    "请补查下一结算期间的流水，再判断是否漏付。",
+  "Inspect the source rows and obtain a unique settlement reference.":
+    "请查看原始行，并确认可唯一识别该批次的结算参考码。",
+  "Confirm whether this bank transaction belongs to the platform.":
+    "请先确认这笔银行交易是否属于该平台。",
+  "Next action": "下一步",
+  "Choose a settlement or bank reference, not an order ID.":
+    "请映射结算或银行流水参考码。订单号不能识别打款批次。",
+  "Use the net transfer or booked amount. Gross sales and balances cannot be reconciled as payouts.":
+    "请选择打款净额或入账发生额。销售总额或账户余额不能用作到账金额。",
+  "Confirmed mappings are reused for the same headers. Check the sample values each time.":
+    "相同表头会复用已确认的映射。请核对本次样本值。",
+  "Same amount in the date window, but no confirmed reference":
+    "日期窗口内有同额流水，但没有可确认的参考码",
+  "Possible bank rows (first five of {count}): {rows}":
+    "疑似银行行号（共 {count} 条，最多显示五条）：{rows}",
+  "Possible bank row numbers": "疑似银行行号",
+  "Payout check": "平台到账核对",
+  "Platform payouts": "平台结算单",
+  "Bank statement": "银行流水",
+  Matched: "已核对",
+  "Amount differs": "金额不符",
+  "Awaiting bank evidence": "暂未找到入账",
+  "Needs review": "人工复核",
+  "Bank only": "仅银行有记录",
+  "Duplicate or conflicting references":
+    "同一参考码重复出现，或一行涉及多个参考码",
+  "Missing reference or nonpositive payout": "缺少参考码或应到账金额非正数",
+  "No bank line with this reference in the supplied period":
+    "所给期间的银行流水中未找到该参考码",
+  "Bank entry is not a positive receipt": "对应的银行记录不是一笔正数入账",
+  "Booking date outside the 0–7 day check window":
+    "入账日期不在结算当日至其后七天的核对窗口内",
+  "Reference agrees; bank amount differs":
+    "参考码一致，但银行金额与应到账净额不同",
+  "Unique reference, date window and amount agree":
+    "双方参考码唯一、日期在窗口内、金额完全一致",
+  "No exact settlement reference in the supplied file":
+    "所给结算单中未找到可精确匹配的参考码",
+  "Debit / money out": "借方／支出",
+  "Credit / money in": "贷方／收入",
+  "Both debit and credit are blank.": "借方和贷方不能同时为空。",
+  "Use nonnegative debit and credit amounts with at most one nonzero side per row.":
+    "借贷两列均须为非负数，同一行最多一侧非零。",
+  "Map one signed amount OR both debit and credit columns. A single side cannot represent net cash.":
+    "请选择一列带正负号的金额，或同时映射借方和贷方。单独一侧不能计算净收支。",
+  "Short order IDs may repeat. Map a long or globally unique order ID.":
+    "短订单号可能重复。请选择长订单号或全局唯一的订单号。",
+  "This order ID occurs in multiple stores. Use a globally unique ID or split by store.":
+    "该订单号出现在不同门店。请选择全局唯一订单号，或先按门店拆表。",
+  Date: "日期",
+  "Settlement reference": "结算参考码",
+  "Confirm the common three-letter currency for both files.":
+    "请确认两份文件使用的同一个三位币种代码。",
+  "Use a different valid column for each field.":
+    "每个字段应映射到不同的有效列。",
+  "Map the date and reference columns on both sources.":
+    "两份文件都需要映射日期列和参考码列。",
+  "The row currency does not match the confirmed currency.":
+    "本行币种与已确认的币种不一致。",
+  "Row {row}": "第 {row} 行",
+  "Expected positive payouts": "应到账正数合计",
+  "Confirmed receipts": "已核对到账",
+  "Payout exceptions": "待查结算事项",
+  "Unlinked bank rows": "未对应的银行流水",
+  "Bank-only rows may be unrelated activity. Pending amounts are not confirmed losses.":
+    "仅在银行出现的行可能属于其他业务。待见入账不等于已少收。",
+  "Summary only · no transaction details": "仅汇总图，不含逐笔明细",
+  "Cases shown: {count}": "当前显示 {count} 项",
+  "Bank minus expected": "实收减应收",
+  "No cases in this view.": "当前筛选没有记录。",
+  "Save summary PNG": "导出汇总 PNG",
+  "Export visible cases as CSV": "导出当前筛选清单 CSV",
+  "Click a case to inspect the original rows. This HTML contains mapped transaction details.":
+    "点击事项可查看两侧数据的原始行号。本 HTML 含映射后的逐笔明细。",
+  "Search reference or date": "搜索参考码或日期",
+  "Case status": "核对状态",
+  "All cases": "全部事项",
+  Reason: "核对依据",
+  File: "文件",
+  Row: "行",
+  Case: "事项",
+  "The two inputs are the same file and worksheet.":
+    "两份输入是同一文件的同一工作表，请分别选择结算单和银行流水。",
+  "Check archived. Inspect the exceptions before sharing.":
+    "核对结果已归档，可展开待查事项再分享。",
+  "Compare net settlement batches with posted bank transactions. Use one currency.":
+    "用同一币种的平台结算批次与银行已入账流水核对。",
+  "Drop or browse": "拖入或浏览",
+  "Review columns": "核对列映射",
+  "Check payouts": "开始核对",
+  "Common currency": "共同币种",
+  "Confirm currency": "请选择币种",
+  "Use a net payout, not gross order sales. No currency conversion.":
+    "请使用扣除费用后的实付净额。此处不换汇。",
+  "Check results": "核对结果",
+  "Load both files and confirm the currency to check payouts.":
+    "放入结算单和银行流水，确认共同币种后开始核对。",
+  "Open detailed report": "打开含明细报表",
+  "HTML includes transaction details. PNG contains totals only.":
+    "HTML 含逐行明细；PNG 为汇总图。",
+  "Inventory click fills": "点击背包文件时放入",
+  "Also read DD/MM/YYYY dates": "同时接受日／月／年格式",
+  "Find whole reference codes in the bank description":
+    "在银行描述中识别完整参考码",
+  "Use a signed amount or map both debit and credit. Whole codes are case-sensitive and separated by spaces, commas, semicolons or pipes.":
+    "映射净金额，或同时映射借方和贷方。描述中的完整码区分大小写，可用空格、逗号、分号或竖线分隔。",
+  "One row per settlement batch. Map the net bank transfer amount and the bank statement code.":
+    "每行应为一个结算批次。请选择实际打款净额与银行流水参考码。",
+  "Use these columns": "采用这些列",
   "Report saved. Drag it into the inventory for a desktop copy.":
     "已合成。把成品拖到背包，即可保存到桌面。",
   "Save a desktop copy and show it in the inventory":

@@ -1,3 +1,5 @@
+import { payoutSuggest, preparePayout } from "../src/payout-input";
+import { reconcile, payoutTotals, type PayoutLine } from "../src/payout-model";
 import { cashMetrics, orderMetrics, dashboard } from "../src/recipes";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -222,4 +224,162 @@ test("cash flow uses signed posted amounts, including zero and missing categorie
     ["0.00", "1.21", "-1.21", "1"],
   );
   assert.equal(suggest(["Date", "Debit", "Credit"], "cashflow").amount, null);
+});
+test("split statement reproducer: 120 in less 35 out is 85; mapping only credit fails", () => {
+  const table = csv(
+    "Transaction date,Debit,Credit,Currency\n2026-10-05,0,120,MYR\n2026-10-06,35,0,MYR",
+  );
+  const map = suggest(table.headers, "cashflow");
+  assert.equal(map.debit, 1);
+  assert.equal(map.credit, 2);
+  const r = validate(table, map, "bank.csv", "MYR", "cashflow");
+  assert.equal(cashMetrics(r.rows).net, 8500);
+  assert.throws(
+    () =>
+      validate(
+        table,
+        { ...map, debit: null, credit: null, amount: 2 },
+        "bank.csv",
+        "MYR",
+        "cashflow",
+      ),
+    /single side/i,
+  );
+  for (const sides of [",", "-1,0", "1,2"]) {
+    const bad = csv("Date,Debit,Credit\n2026-01-01," + sides);
+    assert.throws(() =>
+      validate(
+        bad,
+        suggest(bad.headers, "cashflow"),
+        "bank.csv",
+        "MYR",
+        "cashflow",
+      ),
+    );
+  }
+});
+test("daily short order codes cannot merge distinct orders; known store collisions block", () => {
+  const t = csv(
+      "Date,Sales Amount,Short Order ID,Long Order ID\n2026-10-04,40,GF-123,A\n2026-10-05,60,GF-123,B",
+    ),
+    map = suggest(t.headers, "orders");
+  assert.equal(map.order, 3);
+  const r = validate(t, map, "sales.csv", "MYR", "orders");
+  assert.equal(metrics(r.rows, true).average, 5000);
+  assert.throws(
+    () => validate(t, { ...map, order: 2 }, "sales.csv", "MYR", "orders"),
+    /short order/i,
+  );
+  const s = csv(
+    "Date,Amount,Order ID,Store\n2026-01-01,40,001,A\n2026-01-01,60,001,B",
+  );
+  assert.throws(
+    () => validate(s, suggest(s.headers, "orders"), "s.csv", "MYR", "orders"),
+    /multiple stores/,
+  );
+});
+const prow = (
+  row: number,
+  reference: string,
+  cents: number,
+  date = "2026-10-31",
+): PayoutLine => ({ row, date, reference, cents });
+const match = (s: PayoutLine[], b: PayoutLine[], desc = false) =>
+  reconcile(
+    { name: "p.csv", sheet: "CSV", rows: s },
+    { name: "b.csv", sheet: "CSV", rows: b },
+    "MYR",
+    desc,
+  );
+test("unique positive credit can cross month; one-cent mismatch is visible", () => {
+  const r = match(
+    [prow(2, "A01", 12000), prow(3, "B01", 9000)],
+    [prow(2, "A01", 12000, "2026-11-02"), prow(3, "B01", 8999)],
+  );
+  assert.deepEqual(
+    r.cases.map((c) => c.status),
+    ["matched", "difference"],
+  );
+  assert.deepEqual(payoutTotals(r.cases), {
+    expected: 21000,
+    confirmed: 12000,
+    issues: 1,
+    bankOnly: 0,
+  });
+});
+test("duplicate references or a description linking two references quarantine the full group", () => {
+  const r = match(
+    [prow(2, "A", 100), prow(3, "B", 100)],
+    [prow(2, "A", 100), prow(3, "TRANSFER A;B", 100)],
+    true,
+  );
+  assert.equal(r.cases.length, 1);
+  assert.equal(r.cases[0].status, "review");
+  assert.equal(r.cases[0].bank.length, 2);
+  assert.equal(
+    match([prow(2, "A", 100), prow(3, "A", 100)], [prow(2, "A", 200)]).cases[0]
+      .status,
+    "review",
+  );
+});
+test("absent or partial references and equal amounts never auto-match", () => {
+  const r = match(
+    [prow(2, "ABC1", 500), prow(3, "", 200), prow(4, "ZZ", 900)],
+    [prow(2, "ABC10", 500), prow(3, "abc1", 500), prow(4, "", 200)],
+    true,
+  );
+  assert.equal(payoutTotals(r.cases).confirmed, 0);
+  const s = r.cases.find((c) => c.settlement[0]?.reference === "ABC1")!;
+  assert.equal(s.status, "review");
+  assert.deepEqual(s.candidateRows, [2, 3]);
+  assert.equal(
+    r.cases.find((c) => c.settlement[0]?.reference === "ZZ")!.status,
+    "pending",
+  );
+  assert.equal(r.cases.flatMap((c) => c.bank).length, 3);
+});
+test("negative receipts, out-of-window or earlier dates require review", () => {
+  for (const b of [
+    prow(2, "A", 100, "2026-11-08"),
+    prow(2, "A", 100, "2026-10-30"),
+    prow(2, "A", -100),
+  ]) {
+    assert.equal(match([prow(2, "A", 100)], [b]).cases[0].status, "review");
+  }
+  assert.equal(
+    match([prow(2, "A", 100)], [prow(2, "A", 100, "2026-11-07")]).cases[0]
+      .status,
+    "matched",
+  );
+});
+test("payout parsing requires currency confirmation; DMY dates require explicit mode", () => {
+  const t = csv(
+    "Booking date,Reference,Debit,Credit,Currency\n01/11/2026,0004,,14.55,MYR",
+  );
+  const map = payoutSuggest(t.headers, "bank");
+  assert.throws(
+    () => preparePayout(t, map, "b", "bank", "", true),
+    /currency/i,
+  );
+  assert.throws(
+    () => preparePayout(t, map, "b", "bank", "USD", true),
+    /row currency/i,
+  );
+  assert.throws(() => preparePayout(t, map, "b", "bank", "MYR", false), /YYYY/);
+  assert.deepEqual(preparePayout(t, map, "b", "bank", "MYR", true).rows, [
+    { row: 2, reference: "0004", date: "2026-11-01", cents: 1455 },
+  ]);
+  const p = csv("Date,Reference,Gross sales\n2026-10-01,A,100");
+  assert.throws(
+    () =>
+      preparePayout(
+        p,
+        { ...payoutSuggest(p.headers, "settlement"), amount: 2 },
+        "p",
+        "settlement",
+        "MYR",
+        false,
+      ),
+    /Gross/,
+  );
 });
