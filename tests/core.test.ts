@@ -59,22 +59,26 @@ test("CSV BOM, quoted thousands, comma, newline, quotes and physical CSV line", 
   assert.equal(r.rows[0].row, 3);
 });
 for (const [label, value, err] of [
-  ["empty amount", "2026-01-01,,A,K,CNY", "金额"],
-  ["calendar date", "2025-02-29,3,A,K,CNY", "日期"],
-  ["ambiguous date", "3/4/2026,3,A,K,CNY", "日期"],
-  ["precision", "2026-01-01,1.111,A,K,CNY", "金额"],
-  ["empty order", "2026-01-01,4,,K,CNY", "编号"],
-  ["currency missing", "2026-01-01,4,A,K,", "币种"],
-  ["mixed currency", "2026-01-01,4,A,K,MYR\n2026-01-01,5,B,L,CNY", "多种币种"],
-  ["safe precision limit", "2026-01-01,1000000000000.01,A,K,CNY", "精度范围"],
+  ["empty amount", "2026-01-01,,A,K,CNY", "amount"],
+  ["calendar date", "2025-02-29,3,A,K,CNY", "date"],
+  ["ambiguous date", "3/4/2026,3,A,K,CNY", "date"],
+  ["precision", "2026-01-01,1.111,A,K,CNY", "amount"],
+  ["empty order", "2026-01-01,4,,K,CNY", "order"],
+  ["currency missing", "2026-01-01,4,A,K,", "currency"],
+  [
+    "mixed currency",
+    "2026-01-01,4,A,K,MYR\n2026-01-01,5,B,L,CNY",
+    "Mixed currencies",
+  ],
+  ["safe precision limit", "2026-01-01,1000000000000.01,A,K,CNY", "precision"],
 ])
   test("rejects " + label, () =>
-    assert.throws(() => report(prefix + value), new RegExp(err)),
+    assert.throws(() => report(prefix + value), new RegExp(err, "i")),
   );
 test("error identifies source row and no partial report is returned", () =>
   assert.throws(
     () => report(prefix + "2026-01-01,1,A,K,CNY\nbad,2,B,K,CNY"),
-    /第 3 行/,
+    /Row 3/i,
   ));
 test("strict CSV structure, duplicate or missing headers, invalid encoding", () => {
   for (const s of [
@@ -91,17 +95,17 @@ test("mapping is explicit and one-to-one; a detected currency must be checked", 
   const map = suggest(t.headers);
   assert.throws(
     () => validate(t, { ...map, date: null }, "a", "原表单位"),
-    /映射/,
+    /Map/i,
   );
   assert.throws(
     () => validate(t, { ...map, amount: 0 }, "a", "原表单位"),
-    /同一列/,
+    /more than one field/i,
   );
   assert.throws(
     () => validate(t, { ...map, currency: null }, "a", "原表单位"),
-    /币种/,
+    /currency/i,
   );
-  assert.throws(() => validate(t, map, "a", "MYR"), /不一致/);
+  assert.throws(() => validate(t, map, "a", "MYR"), /does not match/i);
 });
 function book(serial: number, date1904: boolean, formula = false) {
   const wb = XLSX.utils.book_new();
@@ -137,8 +141,8 @@ test("XLSX worksheets, both date systems and zero-padded ids", () => {
 });
 test("XLSX fabricated leap day and cached formulas are blocked", () => {
   for (const [n, formula, re] of [
-    [60, false, /日期/],
-    [1462, true, /公式/],
+    [60, false, /date/i],
+    [1462, true, /formula/i],
   ] as const) {
     const t = book(n, false, formula).table("销售明细");
     assert.throws(() => validate(t, suggest(t.headers), "a", "原表单位"), re);
@@ -147,7 +151,7 @@ test("XLSX fabricated leap day and cached formulas are blocked", () => {
 test("size cap and unsupported extensions", () => {
   assert.throws(
     () => readSource(new Uint8Array(5 * 1024 * 1024 + 1), "large.csv"),
-    /5 MiB/,
+    /5 MiB/i,
   );
-  assert.throws(() => readSource(new Uint8Array([1]), "a.xls"), /xlsx/);
+  assert.throws(() => readSource(new Uint8Array([1]), "a.xls"), /XLSX/i);
 });

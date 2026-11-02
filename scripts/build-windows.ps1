@@ -33,7 +33,6 @@ $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if($LASTEXITCODE -ne 0){throw 'Desktop compilation failed.'}
 New-Item -ItemType Directory -Force release/ui,release/examples | Out-Null
 Copy-Item dist/* release/ui -Force
-Copy-Item examples/* release/examples -Force
-if(Test-Path README.md){Copy-Item README.md release -Force}
+Copy-Item examples/* release/examples -Recurse -Force
+Copy-Item README.md,README.zh-CN.md release -Force
 Write-Output "Ready: $($release.FullName)\OnePageBI.exe"
-

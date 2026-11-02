@@ -1,3 +1,4 @@
+import { sourceUnit, translator, type Language } from "./i18n";
 import { metrics, money, type Report, type Sale } from "./model";
 const ink = "#172f29",
   muted = "#566b61",
@@ -8,14 +9,16 @@ export function paint(
   canvas: HTMLCanvasElement,
   r: Report,
   rows: Sale[],
-  selection = "全部数据",
+  language: Language,
+  selection = translator(language)("All data"),
 ) {
+  const t = translator(language);
   const w = 1200,
     h = 756;
   canvas.width = w * 1.5;
   canvas.height = h * 1.5;
   const g = canvas.getContext("2d");
-  if (!g) throw Error("无法初始化报表绘图。");
+  if (!g) throw Error(t("Could not initialize the report canvas."));
   g.scale(1.5, 1.5);
   function rect(
     x: number,
@@ -57,10 +60,14 @@ export function paint(
   rect(0, 0, w, h, "#f7f8f2");
   rect(0, 0, w, 10, green);
   label("ONE PAGE BI     /     SALES SERIES", 44, 55, 19, green, true);
-  label("销售分析总览", 44, 118, 49, ink, true);
+  label(t("Sales overview"), 44, 118, 49, ink, true);
   label("SALES OVERVIEW     /     01", 885, 109, 18, muted, true, 275);
   label(
-    selection + "   ·   金额单位 " + r.unit,
+    selection +
+      "   ·   " +
+      t("Amount unit") +
+      " " +
+      sourceUnit(r.unit, language),
     45,
     158,
     20,
@@ -69,10 +76,13 @@ export function paint(
     1090,
   );
   const cards = [
-    ["销售额", money(m.total)],
-    ["订单数", m.count === null ? "—" : String(m.count)],
-    ["平均订单额", m.average === null ? "—" : money(m.average)],
-    ["明细行数", String(m.lines)],
+    [t("Net sales"), money(m.total, language)],
+    [t("Orders"), m.count === null ? "—" : String(m.count)],
+    [
+      t("Average order value"),
+      m.average === null ? "—" : money(m.average, language),
+    ],
+    [t("Sales lines"), String(m.lines)],
   ];
   cards.forEach(([k, v], i) => {
     const x = 44 + i * 281;
@@ -124,33 +134,41 @@ export function paint(
           value < 0 ? "#a65040" : color,
         );
       rect(axis, y - 13, 1, 18, "#85958a");
-      label(money(value), x + 384, y + 5, 17, ink, true, 152);
+      label(money(value, language), x + 384, y + 5, 17, ink, true, 152);
     });
   };
   panel(
     44,
-    "月度销售额",
-    "最近 6 个有记录月份",
+    t("Monthly sales"),
+    t("Latest 6 months with recorded sales"),
     m.months.slice(-6),
     green,
-    "当前筛选无明细",
+    t("No rows match the filters"),
   );
   panel(
     606,
-    "品类销售额",
-    "按净销售额排名 · 前 6 类",
+    t("Sales by category"),
+    t("Top 6 categories by net sales"),
     r.hasCategories
       ? m.categories
           .slice(0, 6)
-          .map(([k, v]) => [k === null ? "（品类空白）" : k, v])
+          .map(([k, v]) => [k === null ? t("(blank category)") : k, v])
       : [],
     blue,
-    r.hasCategories ? "当前筛选无明细" : "未映射品类",
+    r.hasCategories ? t("No rows match the filters") : t("Category not mapped"),
   );
   rect(44, 683, 1112, 1, border);
-  label("来源  " + r.name + "  /  " + r.sheet, 44, 714, 16, muted, false, 738);
   label(
-    "生成  " + new Date(r.created).toLocaleDateString("zh-CN"),
+    t("Source") + "  " + r.name + "  /  " + r.sheet,
+    44,
+    714,
+    16,
+    muted,
+    false,
+    738,
+  );
+  label(
+    t("Generated") + "  " + new Date(r.created).toLocaleDateString(language),
     891,
     714,
     16,
@@ -158,5 +176,13 @@ export function paint(
     false,
     259,
   );
-  label("金额含负数退货；缺少订单编号时，订单指标显示 —。", 44, 740, 14, muted);
+  label(
+    t(
+      "Returns reduce net sales. Order metrics show — when no order ID is mapped.",
+    ),
+    44,
+    740,
+    14,
+    muted,
+  );
 }

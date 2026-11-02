@@ -1,61 +1,37 @@
-# One Page BI V0.1
+# One Page BI V0.1.1
 
-Windows x64 本地销售报表工作台。把销售明细放进像素合成台，核对列名，点击成品格，即可得到一页可筛选的销售报表和完整本地档案。
+English · [简体中文](README.zh-CN.md)
 
-## 启动与第一次合成
+One Page BI is a local Windows workbench for turning sales data into an interactive one-page dashboard. It opens in English. Select **中文** in the top-right corner to switch to Simplified Chinese, or **English** to switch back. The workbench remembers your choice.
 
-1. 将 **OnePageBI-V0.1-Windows-x64.zip** 完整解压到一个普通文件夹，双击 **OnePageBI.exe**。若你在源码目录，请打开 `release\OnePageBI.exe`。程序需要同目录的 DLL、`ui` 和 `examples`。
-2. 背包默认打开 Windows 的实际桌面文件夹。点击背包右上的位置菜单，选择 **示例文件夹**。自己的数据可从 **其他文件夹…** 选择，也可点击合成台内的 **销售明细** 格直接浏览。
-3. 点击 **销售明细_演示.csv** 或从背包拖入九宫格。核对字段右侧的第一条样本值，然后点击 **确认映射并验证**。必填字段是销售日期和行销售金额。多工作表 XLSX 可以切换可见的工作表。
-4. 验证成功后，点击箭头右边的 **合成** 方格。成功后格内出现 **销售报表**。点击成品可在默认浏览器中打开独立报表。
-5. 在独立报表中试选月份和品类，再点 **导出当前 PNG**。工作台或历史记录里的 **导出 PNG** 则可另存归档时的全量报表。点击 **再次合成** 将生成一份新档案。
+## Run the portable app
 
-示例是合成的演示数据。全表应得到 **销售额 3,393.00 CNY、10 个不同订单、平均订单额 339.30 CNY、12 条明细**。选择 2026-02 后应得到 **1,058.00 CNY**，其中一条退货为 −120.00 CNY。
+1. Download **OnePageBI-V0.1.1-Windows-x64.zip** from [Releases](https://github.com/timschendot-commits/one-page-bi/releases/tag/v0.1.1). Extract the whole folder and run **OnePageBI.exe**. Keep the DLLs, `ui` and `examples` with it. Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) are required.
+2. The inventory starts at your Desktop and lists CSV and XLSX files. To try the bundled sample, select **Examples** in the inventory location menu. Drag **Sales-demo.csv** onto the grid or click its slot.
+3. Confirm the column mapping. Sales date and line amount are required. Order ID, category and currency are optional. Check the sample values, then select **Confirm and validate**.
+4. Click **Craft** in the output slot. Open the finished report to filter by month and category or export the current view as a PNG.
 
-## 背包和报表
+The example should give **CNY 3,393.00** in net sales, **10** distinct orders, **CNY 339.30** average order value and **12** sales lines. February totals **CNY 1,058.00**, including a return of CNY 120.00.
 
-- 背包按最近修改时间排列。每页 9 × 2 个正方形物品格，超出一页时可翻页或筛选文件名。把鼠标停在文件上可看完整名称。位置菜单可以返回桌面，旁边的刷新键重新扫描当前目录。
-- 销售模板只列当前文件夹中的 CSV、XLSX。文件夹、快捷方式、临时锁文件、隐藏文件和重解析点会被跳过。列出文件时仅读文件信息，选入合成台后才读取内容。
-- 模板、配方和组件入口在左侧。真实指标在字段验证后预览。点击预览图可放大。成品报表在浏览器中独立运行，单个 HTML 文件便于复制或分享，其中包含生成时的全部已映射明细。
-- 本机运行需 Windows x64、.NET Framework 4.8 系列及 Microsoft Edge WebView2 Runtime。便携包使用系统运行环境，运行程序无需开发工具或本地服务器。[WebView2 官方下载](https://developer.microsoft.com/microsoft-edge/webview2/)
+## Language and exports
 
-## 数据约定
+Switching languages preserves the loaded file, field mapping and report values. Input filenames, column names and categories are displayed as supplied. Built-in examples are available in both languages. New standalone HTML reports open in the language used to craft them and have their own offline language button. Changing the report language retains its filters. PNG export uses the current preview or report language. History exports the original archived PNG. Existing V0.1.0 archives open as originally generated.
 
-| 项目 | V0.1 的处理方式 |
-| --- | --- |
-| 输入粒度 | 每一行代表一条交易明细，金额已算到行级。导入前移除小计、合计、说明行；软件保留所有有效明细，不按相同内容自动去重。 |
-| CSV | UTF-8，可带 BOM。逗号分隔，支持标准双引号、引号内的逗号和换行。CSV 中的日期须写作 YYYY-MM-DD 或 YYYY/MM/DD。 |
-| XLSX | 选择一个可见工作表。读取数字、文本、Excel 1900/1904 日期序号及明确的零填充订单号。包含隐藏明细行时也会计入。已映射的公式、错误值、带时间的日期以及含合并格的工作表会提示整理为值或明细表。 |
-| 表头和边界 | 第一行是非空且唯一的列名。每文件至多 5 MiB，每张明细表至多 10,000 条记录、80 列。XLSX 展开内容至多 32 MiB、2,000 项，CSV 单条记录另有长度保护。 |
-| 销售金额 | 可为零或负值，最多两位小数。接受正确的千分位分组。金额以整数分存储与求和。全表金额绝对值合计上限为 1 万亿（按原表金额单位计）。 |
-| 订单和品类 | 订单数取当前筛选中不同订单编号的数量。平均订单额取当前销售额除以订单数，四舍五入至分。未映射订单编号时两项显示「—」。已映射却存在空编号会阻止生成。品类空值保留为空，并可作为独立分组查看。 |
-| 币种 | 一张表使用同一单位。币种列接受三位字母代码，映射后逐行核对。识别到单一明确币种列时须映射。缺少币种列时默认标记「原表单位」，也可手动指定。 |
-| 映射与错误 | 表头匹配只给出建议，用户须确认。坏数据会阻止整个生成，显示错误行数和前六条示例。CSV 跨行字段报出记录结束所在的物理行，XLSX 使用原工作表行号。 |
-| 图表 | 报表按月份和品类联合筛选。月度图显示最近 6 个有记录的月份，品类图显示净销售额前 6 类。顶部指标覆盖当前筛选的全部明细。PNG 为 1800 × 1134 像素。 |
+## Input and calculations
 
-首版支持单表销售分析。多表关联、成本与利润推算、预测、换汇、PDF 和 Power BI PBIP/PBIX 导出均未实现。PBIP 留作后续技术实验。
+- Use one table and one currency per report. Each nonempty row is a line item. Remove subtotals, totals and explanatory rows before import. Every mapped line must pass validation.
+- Use a UTF-8, comma-delimited CSV (BOM and quoted multiline fields supported) or select one visible XLSX worksheet. Headers must be nonempty and unique. Use YYYY-MM-DD, YYYY/MM/DD or supported Excel date serials. Convert formulas to values and unmerge cells first.
+- Maximum file size is 5 MiB, with up to 10,000 data rows and 80 columns. XLSX archives are limited to 32 MiB unpacked and 2,000 entries.
+- Net sales sums signed line amounts, including returns, in integer cents. Amounts have at most two decimal places. Orders counts distinct IDs within the active filters. Average order value is filtered net sales divided by distinct orders, rounded to cents. Missing order mapping leaves order metrics blank. Blank IDs in a mapped order column stop validation.
+- Charts show the six latest recorded months and six highest categories by net sales. KPIs cover all filtered rows. PNGs are 1800 × 1134 pixels. Profit analysis, forecasting, joins, currency conversion and Power BI PBIP/PBIX export are outside this version.
 
-## 每次生成保存在哪里
+## History and archives
 
-在 **历史记录** 中按时间查看，可打开报表、重新导出 PNG 或打开该次归档目录。默认档案根目录位于 Windows 的 **文档／One Page BI／Reports**。如文档被重定向，使用系统返回的实际位置。
+Open **History** to reopen a report, export its original PNG or open its folder. Each successful run creates a separate directory under the Windows Documents folder at `One Page BI/Reports/<id>/`. It contains the original input bytes in `inputs/`, validated rows in `data/processed.json`, a standalone `dashboard/report.html`, `exports/report.png`, `template.json` and `metadata.json`. The metadata includes the input SHA-256, sheet, row count and software version. A run only enters history after its archive is complete. The HTML includes the mapped transaction data and can be opened offline without the desktop app.
 
-```text
-Reports/<独立编号>/
-  inputs/<原始文件名>    原始文件的逐字节副本
-  data/processed.json    全部验证后的映射明细、原表行号、整数分、单位
-  dashboard/report.html  自包含的离线交互报表
-  exports/report.png     本次生成时的全量报表
-  template.json          工作表、列映射、金额精度、单位、主题和指标定义
-  metadata.json          源文件名、SHA-256、行数、版本、时间及档案编号
-```
+## Build and test on Windows
 
-工作台导入时保留源文件快照。原文件在验证后被改写，归档仍会保存实际参加计算的那一份。文件先写进同目录临时包，全部成功后才整体移入历史记录。生成失败可重试。复制整份档案目录即可备份，报表可脱离原始桌面文件和应用运行。
-
-## 源码和构建
-
-本机有 WebView2 和系统 C# 编译器，缺少 Rust 与 MSVC 工具链，因此首版使用 **WinForms + WebView2** 宿主及 **React + TypeScript** 界面。SheetJS CE 负责 XLSX，csv-parse 负责 CSV。系统已安装的 WebView2 复用浏览器引擎。界面、图表代码与图标均打包在本地。运行时由 WebView2 将本地资源映射到应用内部域名。[微软本地内容文档](https://learn.microsoft.com/microsoft-edge/webview2/concepts/working-with-local-content)
-
-在 Windows x64 上安装 Node.js 和 pnpm。已实测的开发环境是 Node 24.22.1、pnpm 11.25.0、Windows 11 x64。在本仓库根目录中用 PowerShell 运行以下命令。
+The desktop host uses WinForms and WebView2. The UI uses React and TypeScript, with SheetJS CE and csv-parse for input. Tested on Windows 11 x64 with Node 24 and pnpm 11. From the repository root, run:
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -66,21 +42,4 @@ pnpm build:windows
 .\release\OnePageBI.exe
 ```
 
-首次构建需要网络来取锁定的前端依赖和 WebView2 SDK。Windows 构建脚本校验 SDK 下载的 SHA-256，并使用系统 .NET Framework 的 x64 C# 编译器。成品及第三方许可证在 `release`。该目录可整体复制或压缩分发。
-
-| 位置 | 负责内容 |
-| --- | --- |
-| `src/app.tsx`、`src/InventoryPanel.tsx` | 合成台、背包、字段确认、历史记录 |
-| `src/input.ts`、`src/model.ts` | 导入、日期与金额验证、按筛选聚合 |
-| `src/chart.ts`、`src/report-entry.ts`、`src/report-html.ts` | 同一套图表绘制、PNG 和独立 HTML |
-| `native/Program.cs`、`native/Archive.cs` | 桌面目录、文件选择、输入快照、归档及历史 |
-| `tests/` | 数据边界测试和实际桌面流程测试 |
-
-## 验证与适用范围
-
-`pnpm test` 运行数据测试。完成构建后，关闭正在使用该构建的窗口，运行 `pnpm test:windows`。桌面测试需要可交互的 Windows 桌面、WebView2、Edge 和 Windows PowerShell。它使用独立临时桌面和文档目录，在已编译的 EXE 中操作真实界面，测试文件不会混入自己的报表历史。
-
-测试覆盖方格实际宽高、背包过滤和翻页、拖放、CSV 错误定位、多工作表 XLSX、字段验证、重复订单、负数销售额、归档失败重试、源文件快照校验、重复生成、重启后的历史恢复、原生另存 PNG 窗口，以及分离的 HTML 在断网浏览器里的筛选与 PNG 导出。测试截图默认写入 `test-results`。可用 `ONEPAGEBI_TEST_DIR` 指定测试输出位置，用 `ONEPAGEBI_RELEASE` 测试已解压的发布包。
-
-本次验证使用一台 Windows 11 x64 电脑。尚未进行多机兼容性验收，也未制作安装向导或签名安装包。
-
+The first build downloads the pinned WebView2 SDK and checks its SHA-256. To run the desktop end-to-end tests on an interactive Windows desktop with Edge, use `pnpm test:windows`. The tests use an isolated profile and archive directory. Set `ONEPAGEBI_RELEASE` to test a different extracted release and `ONEPAGEBI_TEST_DIR` to choose a test output location.

@@ -1,3 +1,4 @@
+import { errorText, translator, LocalizedError, type Message } from "./i18n";
 import { parse } from "csv-parse/browser/esm/sync";
 import * as XLSX from "xlsx";
 import { fields, suggest, type Mapping, type Sale, type Report } from "./model";
@@ -15,8 +16,8 @@ export interface Source {
 }
 const limit = 10000,
   width = 80;
-function fail(msg: string): never {
-  throw new Error(msg);
+function fail(key: Message, values?: Record<string, string | number>): never {
+  throw new LocalizedError((lang) => translator(lang)(key, values));
 }
 const blank = (c: Cell) =>
   c === undefined ||
@@ -26,36 +27,38 @@ const blank = (c: Cell) =>
 function raw(c: Cell): string {
   if (typeof c === "string") return c.trim();
   if (!c) return "";
-  if (c.f || c.F) fail("公式单元格不能验证，请先粘贴为值");
-  if (c.t === "e" || c.t === "b") fail("不支持错误值或布尔值");
+  if (c.f || c.F) fail("Paste formula cells as values before importing.");
+  if (c.t === "e" || c.t === "b")
+    fail("Errors and Boolean values are not supported.");
   return String(c.v ?? "").trim();
 }
 function table(lines: Line[], sheet: string, date1904: boolean): Table {
   const first = lines[0];
   if (!first || first.n !== 1 || !first.cells.length)
-    fail("第一行必须是表头。");
+    fail("The first row must contain column headers.");
   const headers = Array.from(first.cells, (c) => raw(c));
   if (
     headers.some((h) => !h) ||
     new Set(headers.map((h) => h.toLowerCase())).size !== headers.length
   )
-    fail("表头有空白或重名，请修正第一行。");
-  if (headers.length > width) fail("超过 80 列上限。");
+    fail("Headers must be nonempty and unique. Check the first row.");
+  if (headers.length > width) fail("The table exceeds the 80-column limit.");
   const records = lines.slice(1).filter((l) => l.cells.some((c) => !blank(c)));
-  if (!records.length) fail("文件只有表头或空行。");
-  if (records.length > limit) fail("超过 10,000 条明细上限。");
+  if (!records.length) fail("The file has only headers or blank rows.");
+  if (records.length > limit) fail("The table exceeds the 10,000-row limit.");
   return { headers, lines: records, sheet, date1904 };
 }
 export function readSource(bytes: Uint8Array, name: string): Source {
-  if (bytes.length > 5 * 1024 * 1024) fail("文件超过 5 MiB 上限。");
+  if (bytes.length > 5 * 1024 * 1024) fail("The file exceeds the 5 MiB limit.");
   if (/\.csv$/i.test(name)) {
     let content: string;
     try {
       content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     } catch {
-      return fail("CSV 必须保存为 UTF-8 编码。");
+      return fail("Save the CSV using UTF-8 encoding.");
     }
-    if (content.includes("\0")) fail("CSV 含有空字符，请另存为 UTF-8。");
+    if (content.includes("\0"))
+      fail("The CSV contains a null character. Save it as UTF-8.");
     let rows: { record: string[]; info: { bytes: number } }[];
     let records = 0;
     try {
@@ -66,13 +69,20 @@ export function readSource(bytes: Uint8Array, name: string): Source {
         max_record_size: 100000,
         on_record: (row, context) => {
           if (context.index > width || ++records > limit + 1)
-            fail("超过 80 列或 10,000 条明细上限。");
+            fail("The table exceeds 80 columns or 10,000 data rows.");
           return row;
         },
       }) as unknown as typeof rows;
     } catch (e) {
+      if (e instanceof LocalizedError) throw e;
+      const row = (e as { lines?: number }).lines;
+      if (typeof row === "number")
+        return fail(
+          "Invalid CSV near row {row}. Check row lengths, quotes and comma delimiters.",
+          { row },
+        );
       return fail(
-        "CSV 行列数、引号或分隔符有误，请使用逗号分隔。" + (e as Error).message,
+        "Invalid CSV. Check row lengths, quotation marks and comma delimiters.",
       );
     }
     const data =
@@ -95,31 +105,40 @@ export function readSource(bytes: Uint8Array, name: string): Source {
     return { sheets: ["CSV"], table: () => t };
   }
   if (!/\.xlsx$/i.test(name) || bytes[0] !== 80 || bytes[1] !== 75)
-    fail("仅支持真正的 .xlsx 工作簿或 UTF-8 CSV。");
-  const wb = XLSX.read(bytes, {
-    type: "array",
-    cellNF: true,
-    cellFormula: true,
-    cellDates: false,
-    cellText: true,
-  });
+    fail("Choose an XLSX workbook or a UTF-8 CSV file.");
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(bytes, {
+      type: "array",
+      cellNF: true,
+      cellFormula: true,
+      cellDates: false,
+      cellText: true,
+    });
+  } catch {
+    return fail(
+      "The workbook could not be read. Save a valid, unencrypted XLSX file and try again.",
+    );
+  }
   const sheets = wb.SheetNames.filter(
     (n, i) =>
       !wb.Workbook?.Sheets?.[i]?.Hidden && wb.Sheets[n]?.["!type"] !== "chart",
   );
-  if (!sheets.length) fail("没有可读取的可见工作表。");
+  if (!sheets.length) fail("The workbook has no readable visible worksheet.");
   return {
     sheets,
     table: (sheet: string) => {
-      if (!sheets.includes(sheet)) fail("请选择可见工作表。");
+      if (!sheets.includes(sheet)) fail("Choose a visible worksheet.");
       const ws = wb.Sheets[sheet],
         ref = ws["!ref"];
-      if (!ref) return fail("工作表为空。");
+      if (!ref) return fail("The worksheet is empty.");
       const range = XLSX.utils.decode_range(ref);
       if (range.e.r > limit || range.e.c >= width)
-        fail("工作表范围超过 10,001 行（含表头）或 80 列，请缩小范围。");
+        fail(
+          "Reduce the worksheet to 10,001 rows including headers and 80 columns.",
+        );
       if (ws["!merges"]?.length)
-        fail("工作表含合并单元格，请先整理为单行表头的明细表。");
+        fail("Unmerge the cells and use a single header row.");
       const lines: Line[] = [];
       for (let r = 0; r <= range.e.r; r++) {
         const cells: Cell[] = [];
@@ -140,30 +159,33 @@ function ymd(y: number, m: number, d: number): string {
     date.getUTCMonth() !== m - 1 ||
     date.getUTCDate() !== d
   )
-    fail("日期不存在或不在支持范围内");
+    fail("The date does not exist or is outside the supported range.");
   return [y, String(m).padStart(2, "0"), String(d).padStart(2, "0")].join("-");
 }
 function dateValue(cell: Cell, date1904: boolean) {
   const s = raw(cell);
   if (typeof cell === "object" && cell.t === "n") {
     if (!Number.isInteger(cell.v) || (!date1904 && Number(cell.v) === 60))
-      fail("日期序号无效或包含时间");
+      fail("Invalid date serial or a time component is present.");
     const d = XLSX.SSF.parse_date_code(Number(cell.v), { date1904 });
-    if (!d) return fail("Excel 日期序号无效");
+    if (!d) return fail("Invalid Excel date serial.");
     return ymd(d.y, d.m, d.d);
   }
   const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(s);
-  if (!match) return fail("日期应为 YYYY-MM-DD 或 YYYY/MM/DD");
+  if (!match) return fail("Use YYYY-MM-DD or YYYY/MM/DD for dates.");
   return ymd(+match[1], +match[3], +match[4]);
 }
 function cents(cell: Cell) {
   const s = raw(cell);
   if (!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(s))
-    fail("金额须为数字且最多两位小数，不能为空或含货币符号");
+    fail(
+      "Enter a numeric amount with up to two decimal places and no currency symbol.",
+    );
   const [whole, fraction = ""] = s.replace(/[+,\-]/g, "").split(".");
   const n =
     Number(whole + fraction.padEnd(2, "0")) * (s.startsWith("-") ? -1 : 1);
-  if (!Number.isSafeInteger(n)) fail("金额超出精度范围");
+  if (!Number.isSafeInteger(n))
+    fail("The amount exceeds the supported precision.");
   return n;
 }
 export function cellLabel(c: Cell): string {
@@ -182,28 +204,34 @@ export function validate(
   for (const f of fields) {
     const i = map[f.key];
     if (i === null) {
-      if (f.required) fail("请映射「" + f.title + "」。");
+      if (f.required)
+        throw new LocalizedError((lang) =>
+          translator(lang)("Map the required field “{field}”.", {
+            field: translator(lang)(f.title),
+          }),
+        );
     } else if (!Number.isInteger(i) || i < 0 || i >= t.headers.length)
-      fail("映射的列不存在。");
+      fail("The mapped column does not exist.");
   }
   const used = Object.values(map).filter((i) => i !== null);
-  if (new Set(used).size !== used.length) fail("同一列不能映射到多个字段。");
+  if (new Set(used).size !== used.length)
+    fail("A column cannot be used for more than one field.");
   if (suggest(t.headers).currency !== null && map.currency === null)
-    fail("检测到币种列，请映射币种以核对是否混币。");
+    fail("Map the detected currency column to check for mixed currencies.");
   const rows: Sale[] = [],
-    errors: string[] = [];
+    errors: { row: number; field: Message; detail: unknown }[] = [];
   let magnitude = 0,
     detected: string | undefined,
     errorCount = 0;
   for (const { n, cells } of t.lines) {
-    let field = "销售日期";
+    let field: Message = "Sales date";
     try {
       const date = dateValue(cells[map.date!], t.date1904);
-      field = "行销售金额";
+      field = "Line amount";
       const amount = cents(cells[map.amount!]);
-      field = "订单编号";
+      field = "Order ID";
       let order = map.order === null ? null : raw(cells[map.order]);
-      if (order === "") fail("已映射的订单编号不能为空");
+      if (order === "") fail("Mapped order IDs cannot be blank.");
       if (map.order !== null) {
         const c = cells[map.order];
         if (typeof c === "object" && c.t === "n") {
@@ -212,35 +240,58 @@ export function validate(
             Math.abs(Number(c.v)) >= 1e15 ||
             !/^\d+$/.test(c.w ?? String(c.v))
           )
-            fail("编号格式不明确，请将编号保存为文本");
+            fail("Save order IDs with ambiguous formatting as text.");
           order = c.w ?? String(c.v);
         }
       }
-      field = "销售品类";
+      field = "Sales category";
       const category =
         map.category === null ? null : raw(cells[map.category]) || null;
-      field = "币种代码";
+      field = "Currency code";
       if (map.currency !== null) {
         const currency = raw(cells[map.currency]).toUpperCase();
         if (!/^[A-Z]{3}$/.test(currency))
-          fail("币种应为三位字母代码，例如 CNY");
+          fail("Use a three-letter currency code, such as CNY.");
         if (detected && detected !== currency)
-          fail("含多种币种，请先分开或统一换算");
+          fail(
+            "Mixed currencies. Split the file or convert to a single currency first.",
+          );
         detected = currency;
       }
       magnitude += Math.abs(amount);
       rows.push({ row: n, date, cents: amount, order, category });
     } catch (e) {
       errorCount++;
-      if (errors.length < 6)
-        errors.push("第 " + n + " 行 · " + field + "：" + (e as Error).message);
+      if (errors.length < 6) errors.push({ row: n, field, detail: e });
     }
   }
   if (errorCount)
-    fail(errorCount + " 行未通过，已停止生成。\n" + errors.join("\n"));
-  if (magnitude > 1e14) fail("金额绝对值合计超出 V0.1 精度范围。");
-  if (detected && unit !== "原表单位" && detected !== unit)
-    fail("所选单位与原表币种 " + detected + " 不一致。");
+    throw new LocalizedError((lang) => {
+      const t = translator(lang);
+      return [
+        t("Validation failed on {count} row(s). No report was generated.", {
+          count: errorCount,
+        }),
+        ...errors.map((e) =>
+          t("Row {row} · {field}: {detail}", {
+            row: e.row,
+            field: t(e.field),
+            detail: errorText(e.detail, lang),
+          }),
+        ),
+      ].join("\n");
+    });
+  if (magnitude > 1e14)
+    fail("The sum of absolute amounts exceeds the supported precision.");
+  if (
+    detected &&
+    unit !== "Source units" &&
+    unit !== "原表单位" &&
+    detected !== unit
+  )
+    fail("The selected unit does not match the source currency ({currency}).", {
+      currency: detected,
+    });
   return {
     name,
     sheet: t.sheet,

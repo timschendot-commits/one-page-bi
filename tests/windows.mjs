@@ -47,7 +47,7 @@ await writeFile(
 );
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 let child, browser, edge, page;
-async function launch() {
+async function launch(language = "en") {
   const server = createServer();
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const port = server.address().port;
@@ -76,7 +76,11 @@ async function launch() {
   const ctx = browser.contexts()[0];
   page = ctx.pages()[0] || (await ctx.waitForEvent("page"));
   page.setDefaultTimeout(7500);
-  await page.getByRole("heading", { name: "报表合成台" }).waitFor();
+  await page
+    .getByRole("heading", {
+      name: language === "en" ? "Report workbench" : "报表合成台",
+    })
+    .waitFor();
   await page.locator(".filetile").first().waitFor();
 }
 async function closeApp() {
@@ -125,6 +129,13 @@ async function read(index, name) {
 }
 try {
   await launch();
+  assert.equal(await page.locator("html").getAttribute("lang"), "en");
+  assert.doesNotMatch(
+    (await page.locator("body").innerText()).replace("中文", ""),
+    /[\p{Script=Han}]/u,
+  );
+  await click("中文");
+  await page.getByRole("heading", { name: "报表合成台" }).waitFor();
   assert.equal(await page.locator(".filetile").count(), 3);
   assert.equal(await page.locator(".materials .tile").count(), 9);
   const boxes = await page.locator(".bag-grid .tile").evaluateAll((nodes) =>
@@ -154,6 +165,22 @@ try {
   await file("wrong.csv").click();
   await click("确认映射并验证");
   await page.getByRole("alert").filter({ hasText: "第 2 行" }).waitFor();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "English", exact: true })
+    .click();
+  assert.match(
+    await page.getByRole("alert").innerText(),
+    /Row 2 · Line amount/,
+  );
+  assert.equal(
+    await page.getByLabel("Line amount", { exact: true }).inputValue(),
+    "1",
+  );
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "中文", exact: true })
+    .click();
   assert.equal(
     await stat(reports).then(
       () => true,
@@ -213,18 +240,38 @@ try {
       excel = record;
   assert.ok(excel);
   await page.getByLabel("背包位置").selectOption("examples");
-  await file("销售明细_演示.csv").click();
-  await click("确认映射并验证");
-  await generate();
+  await file("销售明细_演示.csv").waitFor();
+  await click("English");
+  await file("Sales-demo.csv").click();
+  await click("Confirm and validate");
+  await click("Craft and archive");
+  await page.getByText("Report saved to history.").waitFor();
+  assert.doesNotMatch(
+    (await page.locator("body").innerText()).replace("中文", ""),
+    /[\p{Script=Han}]/u,
+  );
   assert.match(await page.locator(".peek").innerText(), /3,393\.00/);
   await page.screenshot({
     path: path.join(out, "workbench.png"),
     fullPage: true,
   });
+  const previewBefore = await page.locator(".thumb img").getAttribute("src");
+  await click("中文");
+  await page.getByRole("heading", { name: "成品预览" }).waitFor();
+  const previewZh = await page.locator(".thumb img").getAttribute("src");
+  assert.notEqual(previewZh, previewBefore);
+  const previewExport = path.join(profile, "preview-zh.png");
+  await Promise.all([fillNativeDialog(previewExport), click("导出 PNG")]);
+  await page.getByText("已导出 PNG。").waitFor();
+  assert.ok(
+    (await readFile(previewExport)).equals(
+      Buffer.from(previewZh.split(",")[1], "base64"),
+    ),
+  );
   await click("历史记录");
   assert.equal(await page.locator(".histitem").count(), 4);
   await closeApp();
-  await launch();
+  await launch("zh-CN");
   await click("历史记录");
   await page.locator(".histitem").first().waitFor();
   assert.equal(await page.locator(".histitem").count(), 4);
@@ -274,6 +321,19 @@ try {
     await portable.locator("#summary").innerText(),
     /1 行 · 销售额 10.10 MYR · 订单数 1/,
   );
+  const imageZh = await portable
+    .locator("canvas")
+    .evaluate((c) => c.toDataURL());
+  await portable.getByRole("button", { name: "English", exact: true }).click();
+  assert.equal(await portable.locator("html").getAttribute("lang"), "en");
+  assert.match(
+    await portable.locator("#summary").innerText(),
+    /1 row · Net sales 10.10 MYR · Orders 1/,
+  );
+  assert.notEqual(
+    await portable.locator("canvas").evaluate((c) => c.toDataURL()),
+    imageZh,
+  );
   const download = portable.waitForEvent("download");
   await portable.locator("#png").click();
   const saved = path.join(out, "filtered.png");
@@ -281,6 +341,7 @@ try {
   const filtered = await readFile(saved);
   assert.equal(filtered.readUInt32BE(16), 1800);
   assert.ok(!filtered.equals(png));
+  await portable.getByRole("button", { name: "中文", exact: true }).click();
   await portable.locator("#reset").click();
   assert.match(
     await portable.locator("#summary").innerText(),
@@ -293,6 +354,22 @@ try {
   assert.match(
     await portable.locator("#summary").innerText(),
     /45.95 原表单位 · 订单数 未映射/,
+  );
+  let englishRecord;
+  for (const record of await readdir(reports))
+    if ((await read(record, "metadata.json")).source === "Sales-demo.csv")
+      englishRecord = record;
+  assert.ok(englishRecord);
+  assert.equal((await read(englishRecord, "template.json")).language, "en");
+  await portable.goto(
+    pathToFileURL(path.join(reports, englishRecord, "dashboard", "report.html"))
+      .href,
+  );
+  await portable.getByRole("button", { name: "Export current PNG" }).waitFor();
+  assert.equal(await portable.locator("html").getAttribute("lang"), "en");
+  assert.match(
+    await portable.locator("#summary").innerText(),
+    /12 rows · Net sales 3,393.00 CNY · Orders 10/,
   );
   assert.deepEqual(stray, []);
   console.log(

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, type ReactNode } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { call, type History, type Inventory, type Snapshot } from "./bridge";
 import {
@@ -21,6 +27,16 @@ import { standalone } from "./report-html";
 import { paint } from "./chart";
 import { Icon } from "./icons";
 import { InventoryPanel } from "./InventoryPanel";
+import { useLanguage, LanguageButton, LanguageProvider } from "./language";
+import {
+  errorText,
+  LocalizedError,
+  rowCount,
+  sourceUnit,
+  translator,
+  type Language,
+  type Message,
+} from "./i18n";
 import "./style.css";
 
 const emptyMap: Mapping = {
@@ -30,8 +46,8 @@ const emptyMap: Mapping = {
   category: null,
   currency: null,
 };
-const dateTime = (s: string) =>
-  new Date(s).toLocaleString("zh-CN", {
+const dateTime = (s: string, language: Language) =>
+  new Date(s).toLocaleString(language, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -48,6 +64,7 @@ function Modal({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { t } = useLanguage();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     ref.current?.showModal();
@@ -56,7 +73,8 @@ function Modal({
     <dialog ref={ref} onCancel={onClose}>
       <div className="modalhead">
         <h2>{title}</h2>
-        <button aria-label="关闭" onClick={onClose}>
+        <LanguageButton />
+        <button aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       </div>
@@ -65,11 +83,16 @@ function Modal({
   );
 }
 function App() {
+  const { language, t } = useLanguage();
   const [tab, setTab] = useState("work"),
     [modal, setModal] = useState(""),
     [busy, setBusy] = useState(false),
     lock = useRef(false);
-  const [inventory, setInv] = useState<Inventory>({ folder: "", files: [] }),
+  const [inventory, setInv] = useState<Inventory>({
+      folder: "",
+      files: [],
+      isExamples: false,
+    }),
     [history, setHistory] = useState<History>();
   const [snapshot, setSnap] = useState<{ name: string; token: string } | null>(
       null,
@@ -78,23 +101,28 @@ function App() {
     [sheet, setSheet] = useState(""),
     [table, setTable] = useState<Table | null>(null);
   const [map, setMap] = useState<Mapping>(emptyMap),
-    [unit, setUnit] = useState("原表单位"),
+    [unit, setUnit] = useState("Source units"),
     [report, setReport] = useState<Report | null>(null),
-    [id, setId] = useState(""),
-    [thumb, setThumb] = useState("");
-  const [error, setError] = useState(""),
-    [notice, setNotice] = useState(""),
+    [id, setId] = useState("");
+  const thumb = useMemo(() => {
+    if (!report) return "";
+    const canvas = document.createElement("canvas");
+    paint(canvas, report, report.rows, language);
+    return canvas.toDataURL("image/png");
+  }, [report, language]);
+  const [error, setError] = useState<Error | null>(null),
+    [notice, setNotice] = useState<Message | "">(""),
     [drag, setDrag] = useState(false);
   async function run(fn: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
-    setError("");
+    setError(null);
     setNotice("");
     try {
       await fn();
     } catch (e) {
-      setError((e as Error).message);
+      setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
       lock.current = false;
       setBusy(false);
@@ -104,13 +132,23 @@ function App() {
     setInv(await call<Inventory>(method));
   };
   useEffect(() => {
-    void run(() => inv("inventory"));
-  }, []);
+    let current = true;
+    call<Inventory>("inventory", { language }).then(
+      (value) => {
+        if (current) setInv(value);
+      },
+      (err) => {
+        if (current) setError(err);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [language]);
   const refreshHistory = async () => setHistory(await call<History>("history"));
   function clearOutput() {
     setReport(null);
     setId("");
-    setThumb("");
   }
   function selectSheet(s: Source, name: string) {
     setSheet(name);
@@ -132,7 +170,7 @@ function App() {
     setTable(null);
     setSheet("");
     setMap(emptyMap);
-    setUnit("原表单位");
+    setUnit("Source units");
     clearOutput();
     if (!name) await inv("inventory");
     const bytes = Uint8Array.from(atob(snap.bytes), (c) => c.charCodeAt(0));
@@ -144,30 +182,30 @@ function App() {
   function confirmMap() {
     if (!table || !snapshot) return;
     const r = validate(table, map, snapshot.name, unit);
-    const c = document.createElement("canvas");
-    paint(c, r, r.rows);
     setReport(r);
-    setThumb(c.toDataURL());
     setId("");
     setModal("");
-    setNotice("材料齐了，点击右侧成品格合成。");
+    setNotice("Ready. Click the output slot to craft your report.");
   }
   async function craft() {
     if (!report || !snapshot || !table) return;
     const r = { ...report, created: new Date().toISOString() };
     const c = document.createElement("canvas");
-    paint(c, r, r.rows);
+    paint(c, r, r.rows, language);
     const png = c.toDataURL("image/png");
     const tpl = {
-      appVersion: "0.1.0",
+      appVersion: "0.1.1",
+      language,
       template: "sales",
       version: 1,
       theme: "field-notes",
       sheet: r.sheet,
-      unit: r.unit,
-      grain: "一行一条销售明细",
+      unit: sourceUnit(r.unit, language),
+      grain: t("One sales line per row"),
       moneyScale: 2,
-      definitions,
+      definitions: Object.fromEntries(
+        Object.entries(definitions).map(([key, label]) => [key, t(label)]),
+      ),
       mapping: Object.fromEntries(
         fields.map((f) => [
           f.key,
@@ -186,21 +224,24 @@ function App() {
         rows: r.rows,
       }),
       template: JSON.stringify(tpl, null, 2),
-      html: standalone(r),
+      html: standalone(r, language),
       png: png.split(",")[1],
       created: r.created,
       rows: r.rows.length,
       sheet: r.sheet,
     });
     setReport(r);
-    setThumb(png);
     setId(archiveId);
-    setNotice("合成完成，已存入历史记录。");
+    setNotice("Report saved to history.");
   }
   const action = (method: string, archiveId: string) =>
     run(async () => {
-      const ok = await call(method, { archiveId });
-      if (method === "exportPng" && ok) setNotice("已导出 PNG。");
+      const options =
+        method === "exportPng" && archiveId === id && tab === "work"
+          ? { png: thumb.split(",")[1] }
+          : {};
+      const ok = await call(method, { archiveId, ...options });
+      if (method === "exportPng" && ok) setNotice("PNG exported.");
     });
   const showHistory = () => {
     setModal("");
@@ -209,7 +250,7 @@ function App() {
   };
   const openMap = () => {
     if (table) {
-      setError("");
+      setError(null);
       setModal("mapping");
     }
   };
@@ -220,7 +261,7 @@ function App() {
         className={error ? "feedback bad" : "feedback good"}
         role={error ? "alert" : "status"}
       >
-        {error || notice}
+        {error ? errorText(error, language) : notice && t(notice)}
       </div>
     ) : null;
   return (
@@ -229,44 +270,51 @@ function App() {
         <div className="brand">
           <Icon kind="cube" size={35} />
           One Page <b>BI</b>
-          <span>V0.1</span>
+          <span>V0.1.1</span>
         </div>
         <nav>
           <button
             className={tab === "work" ? "active" : ""}
             onClick={() => {
               setTab("work");
-              setError("");
+              setError(null);
               setNotice("");
             }}
           >
-            工作台
+            {t("Workbench")}
           </button>
           <button
             className={tab === "history" ? "active" : ""}
             onClick={showHistory}
           >
-            历史记录
+            {t("History")}
           </button>
         </nav>
         <small>
-          <i /> 本地工作空间
+          <i /> {t("Local workspace")}
         </small>
+        <LanguageButton />
       </header>
       <main>
-        {tab === "history" && <h1>历史记录</h1>}
+        {tab === "history" && <h1>{t("History")}</h1>}
         {modal !== "mapping" && (error || tab === "history") && status}
         {tab === "history" ? (
           <section className="panel history">
             <div className="panelhead">
               <span>
-                <Icon kind="clock" /> 报表档案库
+                <Icon kind="clock" /> {t("Report archive")}
               </span>
-              <button onClick={() => run(refreshHistory)}>刷新</button>
+              <button onClick={() => run(refreshHistory)}>
+                {t("Refresh")}
+              </button>
             </div>
             <p className="path">{history?.folder}</p>
             {!!history?.skipped && (
-              <p>有 {history.skipped} 条损坏的元数据未显示。</p>
+              <p>
+                {t("Unreadable archive records: {count}.", {
+                  count: history.skipped,
+                })}
+              </p>
             )}
             {history?.items.length ? (
               history.items.map((h) => (
@@ -275,51 +323,52 @@ function App() {
                   <div>
                     <strong>{h.source}</strong>
                     <small>
-                      {dateTime(h.created)} · {h.sheet} · {h.rows} 行
+                      {dateTime(h.created, language)} · {h.sheet} ·{" "}
+                      {rowCount(h.rows, language)}
                     </small>
                   </div>
                   <div className="actions">
                     <button onClick={() => action("report", h.id)}>
-                      打开报表
+                      {t("Open report")}
                     </button>
                     <button onClick={() => action("exportPng", h.id)}>
-                      导出 PNG
+                      {t("Export PNG")}
                     </button>
                     <button onClick={() => action("archiveFolder", h.id)}>
-                      归档目录
+                      {t("Show folder")}
                     </button>
                   </div>
                 </article>
               ))
             ) : (
               <div className="empty">
-                尚无生成记录。报表合成成功后会出现在这里。
+                {t("No reports yet. Craft a report to add it to your history.")}
               </div>
             )}
           </section>
         ) : (
           <div className="workcase">
             <aside className="library">
-              <h2>模板</h2>
+              <h2>{t("Templates")}</h2>
               <div className="bookitem">
                 <Icon kind="book" size={43} />
-                <b>销售分析</b>
+                <b>{t("Sales")}</b>
               </div>
               <button className="refbtn" onClick={() => setModal("recipe")}>
                 <Icon kind="tree" size={19} />
-                配方
+                {t("Recipe")}
               </button>
               <button className="refbtn" onClick={() => setModal("components")}>
                 <Icon kind="map" size={19} />
-                组件
+                {t("Parts")}
               </button>
             </aside>
             <section className="bench">
-              <h1>报表合成台</h1>
+              <h1>{t("Report workbench")}</h1>
               <div className="craftline">
                 <div
                   className={"materials " + (drag ? "over" : "")}
-                  aria-label="三乘三材料格"
+                  aria-label={t("3 by 3 material grid")}
                   onDragOver={(e) => {
                     e.preventDefault();
                     setDrag(true);
@@ -338,7 +387,14 @@ function App() {
                       "application/x-onepagebi",
                     );
                     if (name) void run(() => load(name));
-                    else setError("请从背包拖入文件，或点击销售明细格浏览。");
+                    else
+                      setError(
+                        new LocalizedError((lang) =>
+                          translator(lang)(
+                            "Drag a file from the inventory or click the sales slot to browse.",
+                          ),
+                        ),
+                      );
                   }}
                 >
                   {Array.from({ length: 9 }, (_, i) => {
@@ -349,14 +405,17 @@ function App() {
                           className={
                             "tile material " + (snapshot ? "has-item" : "ghost")
                           }
-                          aria-label="放入销售明细"
+                          aria-label={t("Add sales data")}
                           title={
-                            snapshot?.name ?? "从背包拖入，或点击浏览销售明细"
+                            snapshot?.name ??
+                            t(
+                              "Drag a file here or click to browse for sales data",
+                            )
                           }
                           onClick={() => run(() => load())}
                         >
                           <Icon kind="file" size={40} />
-                          <b>销售明细</b>
+                          <b>{t("Sales data")}</b>
                         </button>
                       );
                     if (i === 4)
@@ -366,13 +425,13 @@ function App() {
                           className={
                             "tile material " + (report ? "has-item" : "ghost")
                           }
-                          aria-label="核对字段映射"
-                          title="核对字段映射"
+                          aria-label={t("Review field mapping")}
+                          title={t("Review field mapping")}
                           disabled={!table}
                           onClick={openMap}
                         >
                           <Icon kind="map" size={40} />
-                          <b>{report ? "已核对" : "字段映射"}</b>
+                          <b>{report ? t("Checked") : t("Map fields")}</b>
                         </button>
                       );
                     return (
@@ -397,18 +456,26 @@ function App() {
                   }
                   disabled={!report || busy}
                   onClick={() => (id ? action("report", id) : run(craft))}
-                  aria-label={id ? "查看合成的销售报表" : "合成并归档"}
-                  title={id ? "打开已生成的销售报表" : "点击合成并自动归档"}
+                  aria-label={
+                    id
+                      ? t("View the finished sales report")
+                      : t("Craft and archive")
+                  }
+                  title={
+                    id
+                      ? t("Open the finished report")
+                      : t("Click to craft and archive a report")
+                  }
                 >
                   <Icon kind="chart" size={54} />
-                  <b>{busy ? "处理中" : id ? "销售报表" : "合成"}</b>
+                  <b>{busy ? t("Working…") : id ? t("Report") : t("Craft")}</b>
                 </button>
               </div>
               {source && source.sheets.length > 1 && (
                 <label className="sheet">
-                  工作表{" "}
+                  {t("Worksheet")}{" "}
                   <select
-                    aria-label="工作表"
+                    aria-label={t("Worksheet")}
                     value={sheet}
                     onChange={(e) =>
                       run(async () => {
@@ -425,50 +492,59 @@ function App() {
               )}
               <div className="benchstatus">
                 <p className="instruction" role="status">
-                  {notice ||
+                  {(notice && t(notice)) ||
                     (report
-                      ? "点击成品格合成并归档。"
+                      ? t(
+                          "Click the output slot to craft and archive your report.",
+                        )
                       : snapshot
-                        ? "点击字段映射格，核对销售明细。"
-                        : "从背包拿一份销售明细，放进材料格。")}
+                        ? t("Click the mapping slot to review your sales data.")
+                        : t(
+                            "Drag a sales file from the inventory to the grid.",
+                          ))}
                 </p>
                 {id && (
                   <button
                     className="textbtn"
-                    aria-label="再次合成并归档"
+                    aria-label={t("Craft and archive again")}
                     onClick={() => run(craft)}
                   >
-                    再次合成
+                    {t("Craft again")}
                   </button>
                 )}
               </div>
             </section>
             <section className="preview">
-              <h2>成品预览</h2>
+              <h2>{t("Report preview")}</h2>
               <div className="displayframe">
                 {thumb ? (
                   <button
                     className="thumb"
-                    aria-label="放大报表预览"
+                    aria-label={t("Enlarge report preview")}
                     onClick={() => setModal("preview")}
                   >
-                    <img src={thumb} alt="根据当前销售明细生成的一页报表" />
+                    <img
+                      src={thumb}
+                      alt={t("One-page report for the selected sales data")}
+                    />
                   </button>
                 ) : (
                   <div className="screenempty">
                     <Icon kind="chart" size={55} />
-                    <span>等待销售明细</span>
+                    <span>{t("Waiting for sales data")}</span>
                   </div>
                 )}
               </div>
               {report && (
                 <div className="peek">
                   <div>
-                    <small>销售额 · {report.unit}</small>
-                    <b>{money(total!.total)}</b>
+                    <small>
+                      {t("Net sales")} · {sourceUnit(report.unit, language)}
+                    </small>
+                    <b>{money(total!.total, language)}</b>
                   </div>
                   <div>
-                    <small>订单数</small>
+                    <small>{t("Orders")}</small>
                     <b>{total!.count ?? "—"}</b>
                   </div>
                 </div>
@@ -476,10 +552,10 @@ function App() {
               {id && (
                 <div className="prevactions">
                   <button onClick={() => action("report", id)}>
-                    打开报表 ↗
+                    {t("Open report")} ↗
                   </button>
                   <button onClick={() => action("exportPng", id)}>
-                    导出 PNG
+                    {t("Export PNG")}
                   </button>
                 </div>
               )}
@@ -495,18 +571,22 @@ function App() {
       </main>
       {modal === "mapping" && table && (
         <Modal
-          title="核对字段映射"
+          title={t("Review field mapping")}
           onClose={() => {
             setModal("");
-            setError("");
+            setError(null);
           }}
         >
-          <p>每行应是一条销售明细。请确认建议列与实际含义一致。</p>
+          <p>
+            {t(
+              "Each row should be a sales line. Check that the suggested columns match your data.",
+            )}
+          </p>
           {source && source.sheets.length > 1 && (
             <label className="sheet">
-              工作表{" "}
+              {t("Worksheet")}{" "}
               <select
-                aria-label="工作表"
+                aria-label={t("Worksheet")}
                 value={sheet}
                 onChange={(e) =>
                   run(async () => {
@@ -526,16 +606,18 @@ function App() {
             </label>
           )}
           <small className="hint">
-            {snapshot?.name} · {sheet} · {table.lines.length} 条明细
+            {snapshot?.name} · {sheet} ·{" "}
+            {rowCount(table.lines.length, language)}
           </small>
           <div className="mapping">
             {fields.map((f) => (
               <label key={f.key}>
                 <span>
-                  {f.title} <small>{f.required ? "必填" : "选填"}</small>
+                  {t(f.title)}{" "}
+                  <small>{f.required ? t("Required") : t("Optional")}</small>
                 </span>
                 <select
-                  aria-label={f.title}
+                  aria-label={t(f.title)}
                   value={map[f.key] ?? ""}
                   onChange={(e) => {
                     setMap({
@@ -543,44 +625,50 @@ function App() {
                       [f.key]: e.target.value === "" ? null : +e.target.value,
                     });
                     clearOutput();
-                    setError("");
+                    setError(null);
                   }}
                 >
-                  <option value="">{f.required ? "请选择列" : "不使用"}</option>
+                  <option value="">
+                    {f.required ? t("Select a column") : t("Unused")}
+                  </option>
                   {table.headers.map((h, i) => (
                     <option value={i} key={i}>
                       {h}
                     </option>
                   ))}
                 </select>
-                <small title="原表第一条明细">
+                <small title={t("First source row")}>
                   {map[f.key] === null
                     ? "—"
                     : cellLabel(table.lines[0].cells[map[f.key]!]) ||
-                      "（空白）"}
+                      t("(blank)")}
                 </small>
               </label>
             ))}
           </div>
           <label className="sheet">
-            金额单位{" "}
+            {t("Amount unit")}{" "}
             <select
-              aria-label="金额单位"
+              aria-label={t("Amount unit")}
               value={unit}
               onChange={(e) => {
                 setUnit(e.target.value);
                 clearOutput();
               }}
             >
-              {["原表单位", "CNY", "MYR", "USD", "SGD", "EUR", "GBP"].map(
+              {["Source units", "CNY", "MYR", "USD", "SGD", "EUR", "GBP"].map(
                 (s) => (
-                  <option key={s}>{s}</option>
+                  <option key={s} value={s}>
+                    {sourceUnit(s, language)}
+                  </option>
                 ),
               )}
             </select>
           </label>
           <p className="help">
-            有币种列时自动核对。无币种列时，请确认全表使用同一单位。金额须为行金额，导入前请移除小计和合计行。
+            {t(
+              "When mapped, the currency column is checked on every row. Otherwise, confirm all rows share one unit. Use line amounts and remove subtotal and total rows first.",
+            )}
           </p>
           {status}
           <div className="modalactions">
@@ -588,48 +676,71 @@ function App() {
               className="primary"
               onClick={() => run(async () => confirmMap())}
             >
-              确认映射并验证
+              {t("Confirm and validate")}
             </button>
           </div>
         </Modal>
       )}
       {(modal === "components" || modal === "recipe") && (
         <Modal
-          title={modal === "recipe" ? "销售分析配方" : "报表组件"}
+          title={
+            modal === "recipe" ? t("Sales recipe") : t("Report components")
+          }
           onClose={() => setModal("")}
         >
           {modal === "recipe" ? (
             <>
-              <p>① 选择一份 UTF-8 CSV 或 XLSX 销售明细，第一行为列名。</p>
               <p>
-                ②
-                映射日期、行销售金额，可补充订单编号、品类和币种。软件不会推算缺失字段。
+                {t(
+                  "1. Choose a UTF-8 CSV or XLSX sales file with column names on the first row.",
+                )}
               </p>
               <p>
-                ③ 验证全部行后合成。每次生成独立档案，原始文件可以从归档取回。
+                {t(
+                  "2. Map the date and line amount. Order ID, category and currency are optional. Missing fields stay missing.",
+                )}
+              </p>
+              <p>
+                {t(
+                  "3. Validate every row and craft the report. Each run keeps its own archive, including a copy of the source file.",
+                )}
               </p>
             </>
           ) : (
             <>
-              <p>销售额、不同订单数、平均订单额、有效明细行数。</p>
               <p>
-                月度销售额显示最近 6 个有记录的月份；品类按净销售额展示前 6
-                类。独立报表支持月份与品类组合筛选。
+                {t(
+                  "Net sales, distinct orders, average order value and sales line count.",
+                )}
+              </p>
+              <p>
+                {t(
+                  "Charts show the latest six months with sales and the top six categories by net sales. Filter the standalone report by month and category together.",
+                )}
               </p>
             </>
           )}
           <p className="help">
-            V0.1 仅支持单表、单币种。利润、预测、多表关联与 Power BI PBIP
-            导出尚未提供。
+            {t(
+              "Use one table and one currency per report. Profit analysis, forecasting, joins and Power BI PBIP export are not supported.",
+            )}
           </p>
         </Modal>
       )}
       {modal === "preview" && (
-        <Modal title="销售分析总览" onClose={() => setModal("")}>
-          <img className="largepreview" src={thumb} alt="一页销售分析报表" />
+        <Modal title={t("Sales overview")} onClose={() => setModal("")}>
+          <img
+            className="largepreview"
+            src={thumb}
+            alt={t("One-page sales report")}
+          />
         </Modal>
       )}
     </>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <LanguageProvider>
+    <App />
+  </LanguageProvider>,
+);

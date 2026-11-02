@@ -1,0 +1,13 @@
+Sales date,Order ID,Category,Sales amount,Currency
+2026-01-05,SO-1001,Brewing equipment,320.00,CNY
+2026-01-05,SO-1001,Coffee beans,85.50,CNY
+2026-01-18,SO-1002,Drinkware,188.00,CNY
+2026-01-29,SO-1003,Coffee beans,256.50,CNY
+2026-02-03,SO-1004,Brewing equipment,460.00,CNY
+2026-02-12,SO-1005,Coffee beans,342.00,CNY
+2026-02-19,SO-1006,Drinkware,376.00,CNY
+2026-02-25,SO-1007,Brewing equipment,-120.00,CNY
+2026-03-04,SO-1008,Drinkware,282.00,CNY
+2026-03-09,SO-1009,Coffee beans,427.50,CNY
+2026-03-16,SO-1010,Brewing equipment,690.00,CNY
+2026-03-16,SO-1010,Coffee beans,85.50,CNY

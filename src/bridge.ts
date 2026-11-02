@@ -1,3 +1,4 @@
+import { LocalizedError, translator } from "./i18n";
 interface Native {
   postMessage: (request: unknown) => void;
   addEventListener: (name: "message", fn: (e: MessageEvent) => void) => void;
@@ -18,19 +19,33 @@ native?.addEventListener("message", (e) => {
   if (!p) return;
   pending.delete(msg.id);
   if (msg.ok) p.resolve(msg.result);
-  else p.reject(Error(msg.error));
+  else
+    p.reject(
+      new LocalizedError((lang) =>
+        lang === "zh-CN" && msg.chinese ? msg.chinese : msg.error,
+      ),
+    );
 });
 export function call<T>(
   method: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
   if (!native)
-    return Promise.reject(Error("请用 OnePageBI.exe 启动桌面工作台。"));
+    return Promise.reject(
+      new LocalizedError((lang) =>
+        translator(lang)("Start the desktop workbench using OnePageBI.exe."),
+      ),
+    );
   const id = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
     try {
-      native.postMessage({ id, method, ...args });
+      native.postMessage({
+        id,
+        method,
+        language: document.documentElement.lang,
+        ...args,
+      });
     } catch (e) {
       pending.delete(id);
       reject(e);
@@ -39,6 +54,7 @@ export function call<T>(
 }
 export interface Inventory {
   folder: string;
+  isExamples: boolean;
   files: { name: string; size: number; modified: string }[];
 }
 export interface Snapshot {

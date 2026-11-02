@@ -18,7 +18,7 @@ namespace OnePageBI {
     internal Workbench(string alternate){
       store=new Store(alternate);
       profile=Path.Combine(alternate??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"One Page BI"),"WebView2");
-      Text="One Page BI   ·   报表合成台";
+      Text="One Page BI";
       using(var graphics=CreateGraphics()){
         float scale=graphics.DpiX/96f;
         var area=Screen.FromControl(this).WorkingArea;
@@ -26,7 +26,7 @@ namespace OnePageBI {
         MinimumSize=new Size(Math.Min(area.Width,(int)(730*scale)),Math.Min(area.Height,(int)(560*scale)));
       }
       StartPosition=FormStartPosition.CenterScreen;Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);view.Dock=DockStyle.Fill;Controls.Add(view);
-      Shown+=async (sender,e)=>{try{await Start();}catch(Exception ex){MessageBox.Show("启动失败，请检查 Microsoft Edge WebView2 Runtime。\n"+ex.Message,Text);Close();}};
+      Shown+=async (sender,e)=>{try{await Start();}catch(Exception ex){MessageBox.Show("Unable to start One Page BI. Check the Microsoft Edge WebView2 Runtime.\n"+ex.Message,Text);Close();}};
     }
     async Task Start(){
       var env=await CoreWebView2Environment.CreateAsync(null,profile,null);
@@ -51,21 +51,31 @@ namespace OnePageBI {
       try{
         var d=store.Json.Deserialize<Dictionary<string,object>>(message);
         id=(string)d["id"];
+        store.SetLanguage(d.ContainsKey("language")?(string)d["language"]:"en");
+        System.Threading.Thread.CurrentThread.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo(store.Language);
+        Text="One Page BI · "+L("Report workbench","报表合成台");
         object result=Dispatch((string)d["method"],d);
         core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=true,result=result}));
-      }catch(Exception ex){core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=false,error=ex.Message}));}
+      }catch(Exception ex){
+        var known=ex as DesktopError;
+        string code=" (0x"+ex.HResult.ToString("X8")+")";
+        string en=known!=null?known.Message:"The operation failed. Check the file location and permissions, then try again."+code;
+        string zh=known!=null?known.Chinese:"操作失败，请检查文件位置和访问权限后重试。"+code;
+        core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=false,error=en,chinese=zh}));
+      }
     }
+    string L(string en,string zh){return store.Language=="zh-CN"?zh:en;}
     object Dispatch(string method,Dictionary<string,object> d){
       switch(method){
         case "inventory": return store.Inventory();
         case "desktop": store.Folder=store.Desktop;return store.Inventory();
-        case "examples": store.Folder=Path.Combine(install,"examples");return store.Inventory();
+        case "examples": store.Folder=store.Examples;return store.Inventory();
         case "folder":
-          using(var dlg=new FolderBrowserDialog {Description="选择 Inventory 文件夹",SelectedPath=store.Folder,ShowNewFolderButton=false}){
+          using(var dlg=new FolderBrowserDialog {Description=L("Choose an inventory folder","选择背包文件夹"),SelectedPath=store.Folder,ShowNewFolderButton=false}){
             if(dlg.ShowDialog(this)==DialogResult.OK)store.Folder=dlg.SelectedPath;
           }return store.Inventory();
         case "selectFile":
-          using(var dlg=new OpenFileDialog {Title="选择销售明细",Filter="销售数据 (*.csv;*.xlsx)|*.csv;*.xlsx",InitialDirectory=store.Folder}){
+          using(var dlg=new OpenFileDialog {Title=L("Choose sales data","选择销售明细"),Filter=L("Sales data","销售数据")+" (*.csv;*.xlsx)|*.csv;*.xlsx",InitialDirectory=store.Folder}){
             if(dlg.ShowDialog(this)!=DialogResult.OK)return null;
             store.Folder=Path.GetDirectoryName(dlg.FileName);return store.Load(Path.GetFileName(dlg.FileName));
           }
@@ -76,19 +86,20 @@ namespace OnePageBI {
         case "archiveFolder":Open(store.ItemPath((string)d["archiveId"],""));return true;
         case "exportPng":
           var png=store.ItemPath((string)d["archiveId"],@"exports\report.png");
-          using(var dlg=new SaveFileDialog {Filter="PNG 图像|*.png",FileName="销售分析.png",DefaultExt="png",AddExtension=true}){
+          using(var dlg=new SaveFileDialog {Title=L("Export PNG","导出 PNG"),Filter=L("PNG image","PNG 图像")+"|*.png",FileName=L("Sales-report.png","销售分析.png"),DefaultExt="png",AddExtension=true}){
             if(dlg.ShowDialog(this)!=DialogResult.OK)return false;
             string target=Path.GetFullPath(dlg.FileName);
-            if(String.Equals(target,Path.GetFullPath(png),StringComparison.OrdinalIgnoreCase))return true;
-            if(!Path.GetExtension(target).Equals(".png",StringComparison.OrdinalIgnoreCase))throw new IOException("请使用 .png 扩展名。");
-            if(target.StartsWith(Path.GetFullPath(store.Reports)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("请选择档案库以外的位置，以保留历史原件。");
-            File.Copy(png,target,true);
+            if(!d.ContainsKey("png") && String.Equals(target,Path.GetFullPath(png),StringComparison.OrdinalIgnoreCase))return true;
+            if(!Path.GetExtension(target).Equals(".png",StringComparison.OrdinalIgnoreCase))throw new DesktopError("Use a .png extension.","请使用 .png 扩展名。");
+            if(target.StartsWith(Path.GetFullPath(store.Reports)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new DesktopError("Choose a location outside the archive to preserve the original files.","请选择档案库以外的位置，以保留历史原件。");
+            if(d.ContainsKey("png"))File.WriteAllBytes(target,Store.ReadPng((string)d["png"]));
+            else File.Copy(png,target,true);
           }return true;
-        default:throw new InvalidOperationException("未知操作。");
+        default:throw new DesktopError("Unknown operation.","未知操作。");
       }
     }
     static void Open(string path){
-      if(!Directory.Exists(path) && !File.Exists(path))throw new IOException("文件或文件夹不存在。");
+      if(!Directory.Exists(path) && !File.Exists(path))throw new DesktopError("File or folder not found.","文件或文件夹不存在。");
       Process.Start(new ProcessStartInfo(path){UseShellExecute=true});
     }
     [STAThread] static void Main(string[] args){

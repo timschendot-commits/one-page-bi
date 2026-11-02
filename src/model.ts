@@ -1,3 +1,4 @@
+import type { Language, Message } from "./i18n";
 export type Field = "date" | "amount" | "order" | "category" | "currency";
 export type Mapping = Record<Field, number | null>;
 export interface Sale {
@@ -18,19 +19,19 @@ export interface Report {
 }
 export const fields: {
   key: Field;
-  title: string;
+  title: Message;
   required?: boolean;
   aliases: string[];
 }[] = [
   {
     key: "date",
-    title: "销售日期",
+    title: "Sales date",
     required: true,
     aliases: ["销售日期", "日期", "订单日期", "date", "salesdate", "orderdate"],
   },
   {
     key: "amount",
-    title: "行销售金额",
+    title: "Line amount",
     required: true,
     aliases: [
       "销售额",
@@ -40,21 +41,22 @@ export const fields: {
       "sales",
       "revenue",
       "salesamount",
+      "lineamount",
     ],
   },
   {
     key: "order",
-    title: "订单编号",
+    title: "Order ID",
     aliases: ["订单编号", "订单号", "订单ID", "orderid", "orderno"],
   },
   {
     key: "category",
-    title: "销售品类",
+    title: "Sales category",
     aliases: ["品类", "产品类别", "类别", "category", "productcategory"],
   },
   {
     key: "currency",
-    title: "币种代码",
+    title: "Currency code",
     aliases: ["币种", "货币", "currency", "currencycode"],
   },
 ];
@@ -96,14 +98,15 @@ export function metrics(rows: Sale[], hasOrders: boolean) {
     ),
   };
 }
-export const money = (cents: number) =>
-  (cents / 100).toLocaleString("zh-CN", {
+export const money = (cents: number, language: Language = "en") =>
+  (cents / 100).toLocaleString(language, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 export const definitions = {
-  total: "逐行累加销售金额，保留退货负数。",
-  count: "当前筛选内不同订单编号的数量。",
-  average: "当前筛选销售额除以不同订单数，以分为单位四舍五入。",
-  lines: "当前筛选内有效数据行数。",
-};
+  total: "Sum of line amounts, including negative returns.",
+  count: "Distinct order IDs within the current filters.",
+  average:
+    "Filtered sales divided by distinct orders, rounded to the nearest cent.",
+  lines: "Number of valid sales lines within the current filters.",
+} as const;

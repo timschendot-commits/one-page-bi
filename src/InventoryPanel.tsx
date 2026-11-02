@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Inventory } from "./bridge";
+import { useLanguage } from "./language";
 import { Icon } from "./icons";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 const pageSize = 18;
 export function InventoryPanel({ inventory, onFolder, onLoad }: Props) {
+  const { t } = useLanguage();
   const [page, setPage] = useState(0),
     [search, setSearch] = useState("");
   const files = inventory.files.filter((f) =>
@@ -18,23 +20,22 @@ export function InventoryPanel({ inventory, onFolder, onLoad }: Props) {
     current = Math.min(page, pages - 1);
   const slots = files.slice(current * pageSize, (current + 1) * pageSize);
   const location =
-    inventory.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? "桌面";
-  const folderLabel =
-    location === "examples"
-      ? "示例文件夹"
-      : location === "Desktop"
-        ? "桌面"
-        : location;
+    inventory.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? t("Desktop");
+  const folderLabel = inventory.isExamples
+    ? t("Examples")
+    : location === "Desktop"
+      ? t("Desktop")
+      : location;
   return (
-    <section className="inventory" aria-label="文件背包">
+    <section className="inventory" aria-label={t("File inventory")}>
       <div className="sectionhead">
         <h2>
           <Icon kind="folder" size={24} />
-          背包
+          {t("Inventory")}
         </h2>
         <div className="folder-controls">
           <select
-            aria-label="背包位置"
+            aria-label={t("Inventory location")}
             title={inventory.folder}
             value=""
             onChange={(e) => {
@@ -46,21 +47,21 @@ export function InventoryPanel({ inventory, onFolder, onLoad }: Props) {
             <option value="" hidden>
               {folderLabel}
             </option>
-            <option value="desktop">桌面</option>
-            <option value="examples">示例文件夹</option>
-            <option value="folder">其他文件夹…</option>
+            <option value="desktop">{t("Desktop")}</option>
+            <option value="examples">{t("Examples")}</option>
+            <option value="folder">{t("Choose folder…")}</option>
           </select>
           <button
             className="refresh"
-            aria-label="刷新背包"
-            title="刷新背包"
+            aria-label={t("Refresh inventory")}
+            title={t("Refresh inventory")}
             onClick={() => onFolder("inventory")}
           >
             ↻
           </button>
         </div>
       </div>
-      <div className="bag-grid" aria-label="18 个方形物品槽">
+      <div className="bag-grid" aria-label={t("18 square inventory slots")}>
         {Array.from({ length: pageSize }, (_, i) => {
           const f = slots[i];
           if (!f)
@@ -75,7 +76,8 @@ export function InventoryPanel({ inventory, onFolder, onLoad }: Props) {
                 f.name +
                 " · " +
                 Math.max(1, Math.ceil(f.size / 1024)) +
-                " KB · 点击或拖入合成台"
+                " KB · " +
+                t("Click or drag to the workbench")
               }
               aria-label={f.name}
               onDragStart={(e) => {
@@ -94,20 +96,22 @@ export function InventoryPanel({ inventory, onFolder, onLoad }: Props) {
       <div className="bagfoot">
         <span>
           {files.length
-            ? files.length + " 个文件 · 点击或拖入合成台"
+            ? t("Files: {count} · Click or drag to the workbench", {
+                count: files.length,
+              })
             : search
-              ? "没有匹配的文件"
-              : "没有 CSV / XLSX 文件"}
+              ? t("No matching files")
+              : t("No CSV or XLSX files")}
         </span>
         {!inventory.files.length && (
           <button className="textbtn" onClick={() => onFolder("examples")}>
-            使用示例
+            {t("Try an example")}
           </button>
         )}
         {(inventory.files.length > pageSize || search) && (
           <input
-            aria-label="搜索文件名"
-            placeholder="筛选文件名"
+            aria-label={t("Search filenames")}
+            placeholder={t("Filter filenames")}
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -118,7 +122,7 @@ export function InventoryPanel({ inventory, onFolder, onLoad }: Props) {
         {pages > 1 && (
           <div className="pager">
             <button
-              aria-label="上一页"
+              aria-label={t("Previous page")}
               disabled={!current}
               onClick={() => setPage(current - 1)}
             >
@@ -126,7 +130,7 @@ export function InventoryPanel({ inventory, onFolder, onLoad }: Props) {
             </button>
             {current + 1}/{pages}
             <button
-              aria-label="下一页"
+              aria-label={t("Next page")}
               disabled={current === pages - 1}
               onClick={() => setPage(current + 1)}
             >

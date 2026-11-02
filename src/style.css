@@ -669,3 +669,23 @@ dialog:has(.largepreview) {
     margin-top: 12px;
   }
 }
+.language-button {
+  white-space: nowrap;
+}
+.top .language-button {
+  color: #283b2b;
+  background: #dbe6cb;
+  font-size: 13px;
+  padding: 5px 10px;
+}
+.modalhead .language-button {
+  margin-left: auto;
+  font-size: 13px;
+}
+.refbtn {
+  white-space: nowrap;
+}
+.material b,
+.result b {
+  text-align: center;
+}
