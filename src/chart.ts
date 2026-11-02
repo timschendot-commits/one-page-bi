@@ -1,5 +1,6 @@
+import { dashboard, recipes } from "./recipes";
 import { sourceUnit, translator, type Language } from "./i18n";
-import { metrics, money, type Report, type Sale } from "./model";
+import { money, type Report, type Sale } from "./model";
 const ink = "#172f29",
   muted = "#566b61",
   green = "#327964",
@@ -56,12 +57,20 @@ export function paint(
     }
     g!.fillText(s, x, y);
   }
-  const m = metrics(rows, r.hasOrders);
+  const recipe = recipes[r.recipe ?? "sales"];
+  const { cards, panels } = dashboard(r, rows, language);
   rect(0, 0, w, h, "#f7f8f2");
   rect(0, 0, w, 10, green);
-  label("ONE PAGE BI     /     SALES SERIES", 44, 55, 19, green, true);
-  label(t("Sales overview"), 44, 118, 49, ink, true);
-  label("SALES OVERVIEW     /     01", 885, 109, 18, muted, true, 275);
+  label(
+    "ONE PAGE BI     /     " + t(recipe.name).toUpperCase(),
+    44,
+    55,
+    19,
+    green,
+    true,
+  );
+  label(t(recipe.title), 44, 118, 49, ink, true);
+  label("ONE PAGE     /     01", 885, 109, 18, muted, true, 275);
   label(
     selection +
       "   ·   " +
@@ -75,15 +84,6 @@ export function paint(
     false,
     1090,
   );
-  const cards = [
-    [t("Net sales"), money(m.total, language)],
-    [t("Orders"), m.count === null ? "—" : String(m.count)],
-    [
-      t("Average order value"),
-      m.average === null ? "—" : money(m.average, language),
-    ],
-    [t("Sales lines"), String(m.lines)],
-  ];
   cards.forEach(([k, v], i) => {
     const x = 44 + i * 281;
     rect(x, 192, 269, 115, i === 0 ? ink : "#e9eee5");
@@ -105,6 +105,7 @@ export function paint(
     items: [string, number][],
     color: string,
     empty: string,
+    count = false,
   ) => {
     rect(x, 339, 550, 317, "#ffffff");
     rect(x, 339, 550, 2, border);
@@ -134,28 +135,27 @@ export function paint(
           value < 0 ? "#a65040" : color,
         );
       rect(axis, y - 13, 1, 18, "#85958a");
-      label(money(value, language), x + 384, y + 5, 17, ink, true, 152);
+      label(
+        count ? String(value) : money(value, language),
+        x + 384,
+        y + 5,
+        17,
+        ink,
+        true,
+        152,
+      );
     });
   };
-  panel(
-    44,
-    t("Monthly sales"),
-    t("Latest 6 months with recorded sales"),
-    m.months.slice(-6),
-    green,
-    t("No rows match the filters"),
-  );
-  panel(
-    606,
-    t("Sales by category"),
-    t("Top 6 categories by net sales"),
-    r.hasCategories
-      ? m.categories
-          .slice(0, 6)
-          .map(([k, v]) => [k === null ? t("(blank category)") : k, v])
-      : [],
-    blue,
-    r.hasCategories ? t("No rows match the filters") : t("Category not mapped"),
+  panels.forEach((p, i) =>
+    panel(
+      i === 0 ? 44 : 606,
+      p.title,
+      p.subtitle,
+      p.items,
+      i === 0 ? green : blue,
+      p.empty,
+      p.count,
+    ),
   );
   rect(44, 683, 1112, 1, border);
   label(
@@ -176,13 +176,5 @@ export function paint(
     false,
     259,
   );
-  label(
-    t(
-      "Returns reduce net sales. Order metrics show — when no order ID is mapped.",
-    ),
-    44,
-    740,
-    14,
-    muted,
-  );
+  label(t(recipe.footer), 44, 740, 14, muted);
 }

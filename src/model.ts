@@ -1,3 +1,4 @@
+import type { RecipeId } from "./recipes";
 import type { Language, Message } from "./i18n";
 export type Field = "date" | "amount" | "order" | "category" | "currency";
 export type Mapping = Record<Field, number | null>;
@@ -9,6 +10,7 @@ export interface Sale {
   category: string | null;
 }
 export interface Report {
+  recipe?: RecipeId;
   name: string;
   sheet: string;
   created: string;
@@ -60,16 +62,77 @@ export const fields: {
     aliases: ["币种", "货币", "currency", "currencycode"],
   },
 ];
-export function suggest(headers: string[]): Mapping {
+export function fieldsFor(recipe: RecipeId) {
+  if (recipe === "sales") return fields;
+  if (recipe === "orders")
+    return fields.map((f) =>
+      f.key === "order" ? { ...f, required: true } : f,
+    );
+  return fields
+    .filter((f) => f.key !== "order")
+    .map((f) => {
+      if (f.key === "date")
+        return {
+          ...f,
+          title: "Transaction date" as const,
+          aliases: [
+            "date",
+            "transactiondate",
+            "postingdate",
+            "日期",
+            "交易日期",
+            "记账日期",
+            "入账日期",
+          ],
+        };
+      if (f.key === "amount")
+        return {
+          ...f,
+          title: "Signed amount" as const,
+          aliases: [
+            "amount",
+            "signedamount",
+            "cashamount",
+            "transactionamount",
+            "金额",
+            "收支金额",
+            "交易金额",
+            "发生额",
+          ],
+        };
+      if (f.key === "category")
+        return {
+          ...f,
+          title: "Category" as const,
+          aliases: [
+            "category",
+            "type",
+            "transactioncategory",
+            "类别",
+            "分类",
+            "收支类别",
+            "交易类型",
+          ],
+        };
+      return f;
+    });
+}
+export function suggest(
+  headers: string[],
+  recipe: RecipeId = "sales",
+): Mapping {
   const key = (s: string) => s.toLowerCase().replace(/[\s_-]/g, "");
-  return Object.fromEntries(
-    fields.map((f) => {
-      const hits = headers.flatMap((h, i) =>
-        f.aliases.some((a) => key(a) === key(h)) ? [i] : [],
-      );
-      return [f.key, hits.length === 1 ? hits[0] : null];
-    }),
-  ) as Mapping;
+  return {
+    order: null,
+    ...Object.fromEntries(
+      fieldsFor(recipe).map((f) => {
+        const hits = headers.flatMap((h, i) =>
+          f.aliases.some((a) => key(a) === key(h)) ? [i] : [],
+        );
+        return [f.key, hits.length === 1 ? hits[0] : null];
+      }),
+    ),
+  } as Mapping;
 }
 export function metrics(rows: Sale[], hasOrders: boolean) {
   let total = 0;

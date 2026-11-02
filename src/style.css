@@ -689,3 +689,39 @@ dialog:has(.largepreview) {
 .result b {
   text-align: center;
 }
+.library .bookitem {
+  aspect-ratio: auto;
+  min-height: 42px;
+  padding: 4px 2px;
+  flex-direction: row;
+  gap: 3px;
+  font-size: 12px;
+  margin-bottom: 3px;
+  background: #d4d4c7;
+  border-color: #898d80;
+  box-shadow:
+    inset 1px 1px #f0f0df,
+    inset -2px -2px #aaae9d;
+}
+.library .bookitem[aria-pressed="true"] {
+  background: #b6cba4;
+  border-color: #557451;
+}
+.report-item {
+  background: #c0d6c8;
+}
+.inventory.accepting .bag-grid {
+  outline: 3px solid #597b52;
+}
+.result[draggable="true"] {
+  cursor: grab;
+}
+.result[draggable="true"]:active {
+  cursor: grabbing;
+}
+@media (max-width: 990px) {
+  .library .bookitem {
+    flex-direction: column;
+    line-height: 1.1;
+  }
+}

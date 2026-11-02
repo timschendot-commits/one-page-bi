@@ -1,3 +1,10 @@
+import {
+  dashboard,
+  recipes,
+  recipeIds,
+  exampleName,
+  type RecipeId,
+} from "./recipes";
 import React, {
   useState,
   useEffect,
@@ -6,7 +13,14 @@ import React, {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { call, type History, type Inventory, type Snapshot } from "./bridge";
+import {
+  call,
+  resultDragType,
+  watchInventory,
+  type History,
+  type Inventory,
+  type Snapshot,
+} from "./bridge";
 import {
   readSource,
   validate,
@@ -14,15 +28,7 @@ import {
   type Source,
   type Table,
 } from "./input";
-import {
-  fields,
-  suggest,
-  metrics,
-  money,
-  definitions,
-  type Mapping,
-  type Report,
-} from "./model";
+import { fieldsFor, suggest, type Mapping, type Report } from "./model";
 import { standalone } from "./report-html";
 import { paint } from "./chart";
 import { Icon } from "./icons";
@@ -88,6 +94,17 @@ function App() {
     [modal, setModal] = useState(""),
     [busy, setBusy] = useState(false),
     lock = useRef(false);
+  const [recipeId, setRecipeId] = useState<RecipeId>("sales"),
+    recipe = recipes[recipeId],
+    fields = fieldsFor(recipeId);
+  const [reveal, setReveal] = useState({ name: "", revision: 0 });
+  useEffect(
+    () =>
+      watchInventory((next) =>
+        setInv((current) => (current.folder === next.folder ? next : current)),
+      ),
+    [],
+  );
   const [inventory, setInv] = useState<Inventory>({
       folder: "",
       files: [],
@@ -157,7 +174,25 @@ function App() {
     clearOutput();
     const t = s.table(name);
     setTable(t);
-    setMap(suggest(t.headers));
+    setMap(suggest(t.headers, recipeId));
+  }
+  function chooseRecipe(next: RecipeId) {
+    if (next === recipeId || busy) return;
+    setRecipeId(next);
+    clearOutput();
+    setError(null);
+    setNotice("");
+    setMap(table ? suggest(table.headers, next) : emptyMap);
+  }
+  async function putInBag(archiveId: string) {
+    if (!archiveId || archiveId !== id) return;
+    const saved = await call<{ name: string; inventory: Inventory }>(
+      "putOnDesktop",
+      { archiveId },
+    );
+    setInv(saved.inventory);
+    setReveal((prev) => ({ name: saved.name, revision: prev.revision + 1 }));
+    setNotice("Desktop copy ready in your inventory.");
   }
   async function load(name?: string) {
     const snap = await call<Snapshot | null>(
@@ -181,7 +216,7 @@ function App() {
   }
   function confirmMap() {
     if (!table || !snapshot) return;
-    const r = validate(table, map, snapshot.name, unit);
+    const r = validate(table, map, snapshot.name, unit, recipeId);
     setReport(r);
     setId("");
     setModal("");
@@ -194,17 +229,20 @@ function App() {
     paint(c, r, r.rows, language);
     const png = c.toDataURL("image/png");
     const tpl = {
-      appVersion: "0.1.1",
+      appVersion: "0.2.0",
       language,
-      template: "sales",
+      template: recipeId,
       version: 1,
       theme: "field-notes",
       sheet: r.sheet,
       unit: sourceUnit(r.unit, language),
-      grain: t("One sales line per row"),
+      grain: t(recipe.grain),
       moneyScale: 2,
       definitions: Object.fromEntries(
-        Object.entries(definitions).map(([key, label]) => [key, t(label)]),
+        Object.entries(recipe.definitions).map(([key, label]) => [
+          key,
+          t(label),
+        ]),
       ),
       mapping: Object.fromEntries(
         fields.map((f) => [
@@ -217,6 +255,7 @@ function App() {
     };
     const archiveId = await call<string>("archive", {
       token: snapshot.token,
+      recipe: recipeId,
       processed: JSON.stringify({
         schemaVersion: 1,
         unit: r.unit,
@@ -232,7 +271,7 @@ function App() {
     });
     setReport(r);
     setId(archiveId);
-    setNotice("Report saved to history.");
+    setNotice("Report saved. Drag it into the inventory for a desktop copy.");
   }
   const action = (method: string, archiveId: string) =>
     run(async () => {
@@ -254,7 +293,9 @@ function App() {
       setModal("mapping");
     }
   };
-  const total = report ? metrics(report.rows, report.hasOrders) : null;
+  const previewCards = report
+    ? dashboard(report, report.rows, language).cards.slice(0, 2)
+    : [];
   const status =
     error || notice ? (
       <div
@@ -270,7 +311,7 @@ function App() {
         <div className="brand">
           <Icon kind="cube" size={35} />
           One Page <b>BI</b>
-          <span>V0.1.1</span>
+          <span>V0.2.0</span>
         </div>
         <nav>
           <button
@@ -323,7 +364,8 @@ function App() {
                   <div>
                     <strong>{h.source}</strong>
                     <small>
-                      {dateTime(h.created, language)} · {h.sheet} ·{" "}
+                      {t((recipes[h.recipe ?? "sales"] ?? recipes.sales).name)}{" "}
+                      · {dateTime(h.created, language)} · {h.sheet} ·{" "}
                       {rowCount(h.rows, language)}
                     </small>
                   </div>
@@ -350,10 +392,28 @@ function App() {
           <div className="workcase">
             <aside className="library">
               <h2>{t("Templates")}</h2>
-              <div className="bookitem">
-                <Icon kind="book" size={43} />
-                <b>{t("Sales")}</b>
-              </div>
+              {recipeIds.map((k) => (
+                <button
+                  key={k}
+                  className="bookitem"
+                  title={t(recipes[k].title)}
+                  aria-pressed={recipeId === k}
+                  disabled={busy}
+                  onClick={() => chooseRecipe(k)}
+                >
+                  <Icon
+                    kind={
+                      k === "cashflow"
+                        ? "chart"
+                        : k === "orders"
+                          ? "file"
+                          : "book"
+                    }
+                    size={23}
+                  />
+                  <b>{t(recipes[k].name)}</b>
+                </button>
+              ))}
               <button className="refbtn" onClick={() => setModal("recipe")}>
                 <Icon kind="tree" size={19} />
                 {t("Recipe")}
@@ -370,6 +430,10 @@ function App() {
                   className={"materials " + (drag ? "over" : "")}
                   aria-label={t("3 by 3 material grid")}
                   onDragOver={(e) => {
+                    if (
+                      !e.dataTransfer.types.includes("application/x-onepagebi")
+                    )
+                      return;
                     e.preventDefault();
                     setDrag(true);
                   }}
@@ -391,7 +455,7 @@ function App() {
                       setError(
                         new LocalizedError((lang) =>
                           translator(lang)(
-                            "Drag a file from the inventory or click the sales slot to browse.",
+                            "Drag a data file from the inventory or click the input slot.",
                           ),
                         ),
                       );
@@ -405,17 +469,15 @@ function App() {
                           className={
                             "tile material " + (snapshot ? "has-item" : "ghost")
                           }
-                          aria-label={t("Add sales data")}
+                          aria-label={t("Choose input file")}
                           title={
                             snapshot?.name ??
-                            t(
-                              "Drag a file here or click to browse for sales data",
-                            )
+                            t("Drop a data file here or click to browse")
                           }
                           onClick={() => run(() => load())}
                         >
                           <Icon kind="file" size={40} />
-                          <b>{t("Sales data")}</b>
+                          <b>{t(recipe.material)}</b>
                         </button>
                       );
                     if (i === 4)
@@ -449,6 +511,15 @@ function App() {
                 />
                 <button
                   key={id}
+                  draggable={Boolean(id) && !busy}
+                  onDragStart={(e) => {
+                    if (!id) {
+                      e.preventDefault();
+                      return;
+                    }
+                    e.dataTransfer.effectAllowed = "copy";
+                    e.dataTransfer.setData(resultDragType, id);
+                  }}
                   className={
                     "tile result " +
                     (report ? "ready " : "") +
@@ -457,13 +528,13 @@ function App() {
                   disabled={!report || busy}
                   onClick={() => (id ? action("report", id) : run(craft))}
                   aria-label={
-                    id
-                      ? t("View the finished sales report")
-                      : t("Craft and archive")
+                    id ? t("View the finished report") : t("Craft and archive")
                   }
                   title={
                     id
-                      ? t("Open the finished report")
+                      ? t(
+                          "Click to open, or drag to the inventory to save on Desktop",
+                        )
                       : t("Click to craft and archive a report")
                   }
                 >
@@ -498,11 +569,23 @@ function App() {
                           "Click the output slot to craft and archive your report.",
                         )
                       : snapshot
-                        ? t("Click the mapping slot to review your sales data.")
+                        ? t("Click the mapping slot to review your data.")
                         : t(
-                            "Drag a sales file from the inventory to the grid.",
+                            "Drag a data file from the inventory to the grid.",
                           ))}
                 </p>
+                {id && (
+                  <button
+                    className="textbtn"
+                    disabled={busy}
+                    onClick={() => run(() => putInBag(id))}
+                    title={t(
+                      "Save a desktop copy and show it in the inventory",
+                    )}
+                  >
+                    {t("To inventory")}
+                  </button>
+                )}
                 {id && (
                   <button
                     className="textbtn"
@@ -523,30 +606,23 @@ function App() {
                     aria-label={t("Enlarge report preview")}
                     onClick={() => setModal("preview")}
                   >
-                    <img
-                      src={thumb}
-                      alt={t("One-page report for the selected sales data")}
-                    />
+                    <img src={thumb} alt={t(recipe.title)} />
                   </button>
                 ) : (
                   <div className="screenempty">
                     <Icon kind="chart" size={55} />
-                    <span>{t("Waiting for sales data")}</span>
+                    <span>{t("Waiting for a data file")}</span>
                   </div>
                 )}
               </div>
               {report && (
                 <div className="peek">
-                  <div>
-                    <small>
-                      {t("Net sales")} · {sourceUnit(report.unit, language)}
-                    </small>
-                    <b>{money(total!.total, language)}</b>
-                  </div>
-                  <div>
-                    <small>{t("Orders")}</small>
-                    <b>{total!.count ?? "—"}</b>
-                  </div>
+                  {previewCards.map(([label, value]) => (
+                    <div key={label}>
+                      <small>{label}</small>
+                      <b>{value}</b>
+                    </div>
+                  ))}
                 </div>
               )}
               {id && (
@@ -561,8 +637,26 @@ function App() {
               )}
             </section>
             <InventoryPanel
-              key={inventory.folder}
-              inventory={inventory}
+              key={inventory.folder + ":" + reveal.revision}
+              revealName={reveal.name}
+              onResultDrop={(value) => void run(() => putInBag(value))}
+              onReport={(name) =>
+                void run(async () => {
+                  await call("inventoryReport", { name });
+                })
+              }
+              inventory={
+                inventory.isExamples
+                  ? {
+                      ...inventory,
+                      files: inventory.files.filter(
+                        (f) =>
+                          f.kind === "report" ||
+                          f.name === exampleName(recipeId, language),
+                      ),
+                    }
+                  : inventory
+              }
               onFolder={(m) => void run(() => inv(m))}
               onLoad={(n) => void run(() => load(n))}
             />
@@ -577,11 +671,7 @@ function App() {
             setError(null);
           }}
         >
-          <p>
-            {t(
-              "Each row should be a sales line. Check that the suggested columns match your data.",
-            )}
-          </p>
+          <p>{t(recipe.guide)}</p>
           {source && source.sheets.length > 1 && (
             <label className="sheet">
               {t("Worksheet")}{" "}
@@ -683,43 +773,16 @@ function App() {
       )}
       {(modal === "components" || modal === "recipe") && (
         <Modal
-          title={
-            modal === "recipe" ? t("Sales recipe") : t("Report components")
-          }
+          title={modal === "recipe" ? t(recipe.title) : t("Report components")}
           onClose={() => setModal("")}
         >
-          {modal === "recipe" ? (
-            <>
-              <p>
-                {t(
-                  "1. Choose a UTF-8 CSV or XLSX sales file with column names on the first row.",
-                )}
-              </p>
-              <p>
-                {t(
-                  "2. Map the date and line amount. Order ID, category and currency are optional. Missing fields stay missing.",
-                )}
-              </p>
-              <p>
-                {t(
-                  "3. Validate every row and craft the report. Each run keeps its own archive, including a copy of the source file.",
-                )}
-              </p>
-            </>
-          ) : (
-            <>
-              <p>
-                {t(
-                  "Net sales, distinct orders, average order value and sales line count.",
-                )}
-              </p>
-              <p>
-                {t(
-                  "Charts show the latest six months with sales and the top six categories by net sales. Filter the standalone report by month and category together.",
-                )}
-              </p>
-            </>
-          )}
+          <p>{t(modal === "recipe" ? recipe.guide : recipe.parts)}</p>
+          <p>{t(recipe.footer)}</p>
+          <p>
+            {t(
+              "Drag the finished item onto the inventory to save a desktop copy.",
+            )}
+          </p>
           <p className="help">
             {t(
               "Use one table and one currency per report. Profit analysis, forecasting, joins and Power BI PBIP export are not supported.",
@@ -728,12 +791,8 @@ function App() {
         </Modal>
       )}
       {modal === "preview" && (
-        <Modal title={t("Sales overview")} onClose={() => setModal("")}>
-          <img
-            className="largepreview"
-            src={thumb}
-            alt={t("One-page sales report")}
-          />
+        <Modal title={t(recipe.title)} onClose={() => setModal("")}>
+          <img className="largepreview" src={thumb} alt={t(recipe.title)} />
         </Modal>
       )}
     </>

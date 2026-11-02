@@ -1,3 +1,4 @@
+import { recipes, dashboard } from "./recipes";
 import { metrics, money, type Report } from "./model";
 import { paint } from "./chart";
 import {
@@ -25,7 +26,7 @@ else category.disabled = true;
 function localize() {
   const t = translator(language);
   document.documentElement.lang = language;
-  document.title = t("Sales overview") + " · One Page BI";
+  document.title = t(recipes[r.recipe ?? "sales"].title) + " · One Page BI";
   document.getElementById("month-label")!.textContent = t("Month");
   document.getElementById("category-label")!.textContent = t("Category");
   month.options[0].text = t("All months");
@@ -40,10 +41,7 @@ function localize() {
   const button = document.getElementById("language")!;
   button.textContent = switchLabel(language);
   button.lang = otherLanguage(language);
-  canvas.setAttribute(
-    "aria-label",
-    t("Sales, orders, monthly totals and category totals"),
-  );
+  canvas.setAttribute("aria-label", t(recipes[r.recipe ?? "sales"].title));
 }
 function render() {
   const t = translator(language);
@@ -57,6 +55,17 @@ function render() {
       .filter(Boolean)
       .join(" · ") || t("All data");
   paint(canvas, r, rows, language, selection);
+  if (r.recipe && r.recipe !== "sales") {
+    const values = dashboard(r, rows, language).cards.map(
+      ([label, value]) => label + " " + value,
+    );
+    document.getElementById("summary")!.textContent = [
+      selection,
+      sourceUnit(r.unit, language),
+      ...values,
+    ].join(" · ");
+    return;
+  }
   const m = metrics(rows, r.hasOrders);
   document.getElementById("summary")!.textContent = [
     selection,
@@ -87,7 +96,8 @@ document.getElementById("reset")!.onclick = () => {
 document.getElementById("png")!.onclick = () => {
   const a = document.createElement("a");
   a.download =
-    (language === "en" ? "Sales_" : "销售分析_") +
+    translator(language)(recipes[r.recipe ?? "sales"].title) +
+    "_" +
     (month.value || (language === "en" ? "all" : "全部")) +
     ".png";
   a.href = canvas.toDataURL("image/png");

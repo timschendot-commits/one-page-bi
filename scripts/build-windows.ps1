@@ -1,3 +1,4 @@
+param([string]$OutputDirectory='release')
 $ErrorActionPreference='Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 if (!(Test-Path 'dist/app.js')) {throw 'Build the UI with pnpm build first.'}
@@ -10,8 +11,8 @@ $sha=[Security.Cryptography.SHA256]::Create()
 try {$actual=[BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($pkg))).Replace('-','')} finally {$sha.Dispose()}
 if ($actual -ne $hash){throw 'WebView2 SDK hash mismatch.'}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$release=New-Item -ItemType Directory -Force release
-$licenses=New-Item -ItemType Directory -Force release/licenses
+$release=New-Item -ItemType Directory -Force -Path $OutputDirectory
+$licenses=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'licenses')
 $zip=[IO.Compression.ZipFile]::OpenRead($pkg)
 try {
   foreach($entry in @('lib/net462/Microsoft.Web.WebView2.Core.dll','lib/net462/Microsoft.Web.WebView2.WinForms.dll','runtimes/win-x64/native/WebView2Loader.dll')){
@@ -26,13 +27,14 @@ foreach($lib in @('react','react-dom','scheduler','xlsx','csv-parse')){
   if($lib -eq 'scheduler'){$module=node -p "require('path').dirname(require.resolve('scheduler/package.json',{paths:[require.resolve('react-dom')]}))"}
   $license=Get-ChildItem -Path $module -Filter 'LICENSE*' -File | Select-Object -First 1
   if(!$license){throw "Missing license for $lib"}
-  Copy-Item $license.FullName "release/licenses/$lib.txt" -Force
+  Copy-Item -LiteralPath $license.FullName -Destination (Join-Path $licenses.FullName "$lib.txt") -Force
 }
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 /win32manifest:native\app.manifest /win32icon:native\app.ico /out:release\OnePageBI.exe /r:release\Microsoft.Web.WebView2.Core.dll /r:release\Microsoft.Web.WebView2.WinForms.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll native\Program.cs native\Archive.cs
+& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 /win32manifest:native\app.manifest /win32icon:native\app.ico "/out:$($release.FullName)\OnePageBI.exe" "/r:$($release.FullName)\Microsoft.Web.WebView2.Core.dll" "/r:$($release.FullName)\Microsoft.Web.WebView2.WinForms.dll" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll native\Program.cs native\Archive.cs
 if($LASTEXITCODE -ne 0){throw 'Desktop compilation failed.'}
-New-Item -ItemType Directory -Force release/ui,release/examples | Out-Null
-Copy-Item dist/* release/ui -Force
-Copy-Item examples/* release/examples -Recurse -Force
-Copy-Item README.md,README.zh-CN.md release -Force
+$ui=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'ui')
+$examples=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'examples')
+Copy-Item dist/* $ui.FullName -Force
+Copy-Item examples/* $examples.FullName -Recurse -Force
+Copy-Item README.md,README.zh-CN.md $release.FullName -Force
 Write-Output "Ready: $($release.FullName)\OnePageBI.exe"

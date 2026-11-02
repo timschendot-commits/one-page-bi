@@ -1,6 +1,72 @@
 export type Language = "en" | "zh-CN";
 
 const chinese = {
+  "Report saved. Drag it into the inventory for a desktop copy.":
+    "已合成。把成品拖到背包，即可保存到桌面。",
+  "Save a desktop copy and show it in the inventory":
+    "保存桌面副本并在背包中显示",
+  "Order analysis": "订单分析",
+  "Order lines": "订单明细",
+  "Cash flow": "收支",
+  "Cash flow statement": "收支流水",
+  "Cash ledger": "收支明细",
+  "One order line per row": "一行一条订单明细",
+  "One posted cash transaction per row": "一行一笔实际收付款",
+  "Map a sales date and line amount. Order ID, category and currency are optional.":
+    "映射销售日期和行金额。订单号、品类和币种可选。",
+  "Map a date, line amount and order ID. Repeated IDs are lines of the same order.":
+    "映射日期、行金额和订单号。同一订单号的多行会归为一笔订单。",
+  "Distinct orders, average order value, multi-line orders and net sales. Charts show orders by month and the six largest orders.":
+    "统计不同订单数、平均订单额、多行订单数和净销售额，展示每月订单数与金额最高的六笔订单。",
+  "Counts use distinct order IDs within each filter or month. Multi-line orders have at least two visible lines.":
+    "订单数在当前筛选或单月内去重，多行订单须有至少两条可见明细。",
+  "Number of order IDs with at least two lines in the filtered data.":
+    "当前筛选内含至少两条明细的不同订单号数量。",
+  "Map a transaction date and a signed amount. Receipts are positive and payments are negative. Category and currency are optional.":
+    "映射交易日期和带正负号的金额。实收填正数，实付填负数。类别和币种可选。",
+  "Cash in, cash out, net movement and transaction count. Charts show monthly net movement and spending by category.":
+    "统计流入、流出、净变动和流水笔数，并展示月度净变动和分类支出。",
+  "Cash out is shown as a positive amount. Net movement excludes any opening balance.":
+    "流出按正数展示，净变动不包含期初余额。",
+  "Sum of positive transaction amounts.": "所有正数流水金额之和。",
+  "Absolute sum of negative transaction amounts.":
+    "所有负数流水金额的绝对值之和。",
+  "Cash in less cash out.": "流入减去流出。",
+  "Number of posted transaction lines in the active filters.":
+    "当前筛选内的实际流水笔数。",
+  "Transaction date": "交易日期",
+  "Signed amount": "收支金额（带正负号）",
+  "Multi-line orders": "多行订单数",
+  "Orders by month": "月度订单数",
+  "Latest 6 recorded months": "最近有记录的六个月",
+  "Largest orders": "大额订单",
+  "Top 6 orders by net value": "按净额排名的前六笔订单",
+  "Cash in": "流入",
+  "Cash out": "流出",
+  "Net movement": "净变动",
+  Transactions: "流水笔数",
+  "Monthly net movement": "月度净变动",
+  "Spending by category": "分类支出",
+  "Top 6 categories by payments": "按实付金额排名的前六类",
+  "No payments in this selection": "当前筛选没有支出",
+  "Choose input file": "选择输入文件",
+  "Drop a data file here or click to browse": "把数据文件拖到这里，或点击浏览",
+  "View the finished report": "查看已合成的报表",
+  "Click to open, or drag to the inventory to save on Desktop":
+    "点击打开，或拖到背包以保存到桌面",
+  "Desktop copy ready in your inventory.": "已放入背包，文件在桌面。",
+  "To inventory": "放入背包",
+  "Waiting for a data file": "等待数据文件",
+  "Drag a data file from the inventory to the grid.":
+    "从背包拖一份数据文件到材料格。",
+  "Click the mapping slot to review your data.": "点击字段映射格，核对数据。",
+  "Drag a data file from the inventory or click the input slot.":
+    "从背包拖入数据文件，或点击材料格浏览。",
+  "Drag the finished item onto the inventory to save a desktop copy.":
+    "把成品拖回背包，即可在桌面保存一份报表。",
+  "Items: {count} · Click an item to open it":
+    "共 {count} 件 · 点击物品即可打开",
+  "No data files or marked reports": "没有数据文件或带标记的报表",
   Close: "关闭",
   Workbench: "工作台",
   History: "历史记录",
@@ -35,7 +101,7 @@ const chinese = {
   "Open the finished report": "打开已生成的销售报表",
   "Click to craft and archive a report": "点击合成并自动归档",
   "Working…": "处理中",
-  Report: "销售报表",
+  Report: "报表",
   Craft: "合成",
   Worksheet: "工作表",
   "Click the output slot to craft and archive your report.":

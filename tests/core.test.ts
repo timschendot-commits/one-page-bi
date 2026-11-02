@@ -1,3 +1,4 @@
+import { cashMetrics, orderMetrics, dashboard } from "../src/recipes";
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
@@ -154,4 +155,71 @@ test("size cap and unsupported extensions", () => {
     /5 MiB/i,
   );
   assert.throws(() => readSource(new Uint8Array([1]), "a.xls"), /XLSX/i);
+});
+test("order analysis requires IDs and counts each order once per visible scope", () => {
+  const t = csv(
+    "date,amount,order_id,category\n2026-01-01,10.50,01,A\n2026-01-02,-1.50,01,B\n2026-02-01,2.00,01,A\n2026-02-02,5.00,02,A",
+  );
+  const map = suggest(t.headers, "orders");
+  assert.throws(
+    () => validate(t, { ...map, order: null }, "source.csv", "USD", "orders"),
+    /Order ID/,
+  );
+  const r = validate(t, map, "source.csv", "USD", "orders");
+  assert.deepEqual(orderMetrics(r.rows), {
+    multi: 1,
+    ranked: [
+      ["01", 1100],
+      ["02", 500],
+    ],
+    monthly: [
+      ["2026-01", 1],
+      ["2026-02", 2],
+    ],
+  });
+  assert.deepEqual(
+    dashboard(r, r.rows, "en").cards.map((x) => x[1]),
+    ["2", "8.00", "1", "16.00"],
+  );
+  assert.deepEqual(
+    dashboard(
+      r,
+      r.rows.filter((x) => x.date.startsWith("2026-02")),
+      "en",
+    ).cards.map((x) => x[1]),
+    ["2", "3.50", "0", "7.00"],
+  );
+});
+test("cash flow uses signed posted amounts, including zero and missing categories", () => {
+  const t = csv(
+    "交易日期,收支金额,收支类别,币种\n2026-01-01,10.10,A,MYR\n2026-02-01,-1.21,B,MYR\n2026-02-02,-0.12,,MYR\n2026-02-03,0,,MYR",
+  );
+  const map = suggest(t.headers, "cashflow"),
+    r = validate(t, map, "cash.csv", "Source units", "cashflow");
+  assert.deepEqual(cashMetrics(r.rows), {
+    inflow: 1010,
+    outflow: 133,
+    net: 877,
+    spending: [
+      ["B", 121],
+      [null, 12],
+    ],
+  });
+  assert.deepEqual(
+    dashboard(r, r.rows, "en").cards.map((x) => x[1]),
+    ["10.10", "1.33", "8.77", "4"],
+  );
+  assert.deepEqual(
+    dashboard(r, [], "en").cards.map((x) => x[1]),
+    ["0.00", "0.00", "0.00", "0"],
+  );
+  assert.deepEqual(
+    dashboard(
+      r,
+      r.rows.filter((x) => x.category === "B"),
+      "en",
+    ).cards.map((x) => x[1]),
+    ["0.00", "1.21", "-1.21", "1"],
+  );
+  assert.equal(suggest(["Date", "Debit", "Credit"], "cashflow").amount, null);
 });

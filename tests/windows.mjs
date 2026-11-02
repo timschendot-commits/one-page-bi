@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import {
   mkdir,
   mkdtemp,
+  rename,
   writeFile,
   readFile,
   readdir,
@@ -122,7 +123,7 @@ function fillNativeDialog(target) {
 }
 async function generate() {
   await page.getByRole("button", { name: "合成并归档", exact: true }).click();
-  await page.getByText("合成完成，已存入历史记录。").waitFor();
+  await page.getByText("已合成。把成品拖到背包，即可保存到桌面。").waitFor();
 }
 async function read(index, name) {
   return JSON.parse(await readFile(path.join(reports, index, name), "utf8"));
@@ -219,7 +220,7 @@ try {
   const png = await readFile(path.join(reports, id, "exports", "report.png"));
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1800, 1134]);
   await click("再次合成并归档");
-  await page.getByText("合成完成，已存入历史记录。").waitFor();
+  await page.getByText("已合成。把成品拖到背包，即可保存到桌面。").waitFor();
   assert.equal((await readdir(reports)).length, 2);
   assert.equal(
     (await readFile(path.join(reports, id, "exports", "report.png"))).equals(
@@ -245,7 +246,9 @@ try {
   await file("Sales-demo.csv").click();
   await click("Confirm and validate");
   await click("Craft and archive");
-  await page.getByText("Report saved to history.").waitFor();
+  await page
+    .getByText("Report saved. Drag it into the inventory for a desktop copy.")
+    .waitFor();
   assert.doesNotMatch(
     (await page.locator("body").innerText()).replace("中文", ""),
     /[\p{Script=Han}]/u,
@@ -268,13 +271,80 @@ try {
       Buffer.from(previewZh.split(",")[1], "base64"),
     ),
   );
+  // Real result-slot drag, including from Examples while the destination is Desktop.
+  const dropResult = async () => {
+    await page.locator(".result").dragTo(page.locator(".bag-grid"));
+    await page.getByText("已放入背包，文件在桌面。").waitFor();
+  };
+  const desktopCopies = async () =>
+    (await readdir(desktop)).filter((n) => /\.onepagebi\.html$/i.test(n));
+  await dropResult();
+  const [salesCopy] = await desktopCopies();
+  assert.ok(salesCopy.includes("-sales-"));
+  await file(salesCopy).waitFor();
+  assert.match(await page.getByLabel("背包位置").innerText(), /桌面/);
+  assert.equal(await file(salesCopy).getAttribute("draggable"), "false");
+  const originalReport = await readFile(path.join(desktop, salesCopy));
+  await dropResult();
+  assert.deepEqual(await desktopCopies(), [salesCopy]);
+  await writeFile(path.join(desktop, salesCopy), "user-edited desktop copy");
+  await click("放入背包");
+  await page.getByText("已放入背包，文件在桌面。").waitFor();
+  const duplicate = (await desktopCopies()).find((n) => n !== salesCopy);
+  assert.ok(duplicate);
+  assert.ok(
+    (await readFile(path.join(desktop, duplicate))).equals(originalReport),
+  );
+  assert.equal(
+    await readFile(path.join(desktop, salesCopy), "utf8"),
+    "user-edited desktop copy",
+  );
+  await rename(
+    path.join(desktop, duplicate),
+    path.join(desktop, "external.ONEPAGEBI.HTML"),
+  );
+  await file("external.ONEPAGEBI.HTML").waitFor();
+  await rename(
+    path.join(desktop, "external.ONEPAGEBI.HTML"),
+    path.join(desktop, "ordinary.html"),
+  );
+  await file("external.ONEPAGEBI.HTML").waitFor({ state: "detached" });
+  assert.equal(await file("ordinary.html").count(), 0);
+  await click("订单分析");
+  assert.ok(await page.locator(".result").isDisabled());
+  await click("核对字段映射");
+  await page.getByLabel("订单编号", { exact: true }).selectOption("");
+  await click("确认映射并验证");
+  await page.getByRole("alert").filter({ hasText: "订单编号" }).waitFor();
+  await page.getByLabel("订单编号", { exact: true }).selectOption("1");
+  await click("确认映射并验证");
+  await generate();
+  await dropResult();
+  const orderFile = (await desktopCopies()).find((n) => n.includes("-orders-"));
+  assert.ok(orderFile);
+  await click("收支");
+  await page.getByLabel("背包位置").selectOption("examples");
+  await file("收支流水_演示.csv").click();
+  await click("确认映射并验证");
+  await generate();
+  assert.match(await page.locator(".peek").innerText(), /1,400.25/);
+  await dropResult();
+  const cashFile = (await desktopCopies()).find((n) =>
+    n.includes("-cashflow-"),
+  );
+  assert.ok(cashFile);
+  await file(cashFile).waitFor();
+  await page.screenshot({
+    path: path.join(out, "desktop-inventory.png"),
+    fullPage: true,
+  });
   await click("历史记录");
-  assert.equal(await page.locator(".histitem").count(), 4);
+  assert.equal(await page.locator(".histitem").count(), 6);
   await closeApp();
   await launch("zh-CN");
   await click("历史记录");
   await page.locator(".histitem").first().waitFor();
-  assert.equal(await page.locator(".histitem").count(), 4);
+  assert.equal(await page.locator(".histitem").count(), 6);
   const target = path.join(profile, "history-export.png");
   await Promise.all([
     fillNativeDialog(target),
@@ -357,7 +427,10 @@ try {
   );
   let englishRecord;
   for (const record of await readdir(reports))
-    if ((await read(record, "metadata.json")).source === "Sales-demo.csv")
+    if (
+      (await read(record, "metadata.json")).source === "Sales-demo.csv" &&
+      (await read(record, "metadata.json")).recipe === "sales"
+    )
       englishRecord = record;
   assert.ok(englishRecord);
   assert.equal((await read(englishRecord, "template.json")).language, "en");
@@ -371,9 +444,33 @@ try {
     await portable.locator("#summary").innerText(),
     /12 rows · Net sales 3,393.00 CNY · Orders 10/,
   );
+  await portable.goto(pathToFileURL(path.join(desktop, orderFile)).href);
+  await portable.getByRole("button", { name: "English", exact: true }).click();
+  assert.match(
+    await portable.locator("#summary").innerText(),
+    /Orders 10 · Average order value 339.30 · Multi-line orders 2 · Net sales 3,393.00/,
+  );
+  await portable.goto(pathToFileURL(path.join(desktop, cashFile)).href);
+  await portable.getByRole("button", { name: "English", exact: true }).click();
+  assert.match(await portable.title(), /Cash flow statement/);
+  assert.match(
+    await portable.locator("#summary").innerText(),
+    /Cash in 1,400.25 · Cash out 465.25 · Net movement 935.00 · Transactions 6/,
+  );
+  await portable.locator("#month").selectOption("2026-02");
+  assert.match(
+    await portable.locator("#summary").innerText(),
+    /Net movement 85.00/,
+  );
+  const cashPNG = portable.waitForEvent("download");
+  await portable.locator("#png").click();
+  assert.match(
+    (await cashPNG).suggestedFilename(),
+    /Cash flow statement_2026-02/,
+  );
   assert.deepEqual(stray, []);
   console.log(
-    "PASS: native workbench, CSV and XLSX selection, validation, source snapshot, archives, restart, detached offline filters, real PNG and HTML escaping.",
+    "PASS: desktop drag and inventory discovery, collision and repeat drops, three recipes, bilingual offline HTML and PNG, archives and restart.",
   );
 } finally {
   await edge?.close();

@@ -1,5 +1,6 @@
 import { LocalizedError, translator } from "./i18n";
 interface Native {
+  removeEventListener: (name: "message", fn: (e: MessageEvent) => void) => void;
   postMessage: (request: unknown) => void;
   addEventListener: (name: "message", fn: (e: MessageEvent) => void) => void;
 }
@@ -52,10 +53,23 @@ export function call<T>(
     }
   });
 }
+export const resultDragType = "application/x-onepagebi-result";
+export function watchInventory(listener: (inventory: Inventory) => void) {
+  const handle = (event: MessageEvent) => {
+    if (event.data.kind === "inventoryChanged") listener(event.data.inventory);
+  };
+  native?.addEventListener("message", handle);
+  return () => native?.removeEventListener("message", handle);
+}
 export interface Inventory {
   folder: string;
   isExamples: boolean;
-  files: { name: string; size: number; modified: string }[];
+  files: {
+    kind: "data" | "report";
+    name: string;
+    size: number;
+    modified: string;
+  }[];
 }
 export interface Snapshot {
   name: string;
@@ -67,6 +81,7 @@ export interface History {
   skipped: number;
   items: {
     id: string;
+    recipe?: import("./recipes").RecipeId;
     source: string;
     created: string;
     rows: number;

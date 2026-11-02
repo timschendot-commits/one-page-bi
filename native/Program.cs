@@ -13,12 +13,27 @@ namespace OnePageBI {
     const string StartUrl="https://onepagebi.local/index.html";
     readonly WebView2 view=new WebView2();
     readonly Store store;
+    readonly FileSystemWatcher inventoryWatch=new FileSystemWatcher();
+    readonly Timer refreshTimer=new Timer {Interval=180};
     readonly string profile;
     readonly string install=AppDomain.CurrentDomain.BaseDirectory;
     internal Workbench(string alternate){
       store=new Store(alternate);
       profile=Path.Combine(alternate??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"One Page BI"),"WebView2");
       Text="One Page BI";
+      inventoryWatch.SynchronizingObject=this;
+      inventoryWatch.NotifyFilter=NotifyFilters.FileName|NotifyFilters.LastWrite|NotifyFilters.Attributes;
+      inventoryWatch.Changed+=OnFileChange;
+      inventoryWatch.Created+=OnFileChange;
+      inventoryWatch.Deleted+=OnFileChange;
+      inventoryWatch.Renamed+=(s,e)=>{if(Store.SupportedName(e.OldName)||Store.SupportedName(e.Name))ScheduleRefresh();};
+      inventoryWatch.Error+=(s,e)=>ScheduleRefresh();
+      refreshTimer.Tick+=(s,e)=>{
+        refreshTimer.Stop();
+        try{view.CoreWebView2.PostWebMessageAsJson(store.Json.Serialize(new {kind="inventoryChanged",inventory=store.Inventory()}));}
+        catch(IOException){} catch(UnauthorizedAccessException){}
+      };
+      FormClosed+=(s,e)=>{inventoryWatch.Dispose();refreshTimer.Dispose();};
       using(var graphics=CreateGraphics()){
         float scale=graphics.DpiX/96f;
         var area=Screen.FromControl(this).WorkingArea;
@@ -27,6 +42,14 @@ namespace OnePageBI {
       }
       StartPosition=FormStartPosition.CenterScreen;Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);view.Dock=DockStyle.Fill;Controls.Add(view);
       Shown+=async (sender,e)=>{try{await Start();}catch(Exception ex){MessageBox.Show("Unable to start One Page BI. Check the Microsoft Edge WebView2 Runtime.\n"+ex.Message,Text);Close();}};
+    }
+    void ScheduleRefresh(){refreshTimer.Stop();refreshTimer.Start();}
+    void OnFileChange(object sender,FileSystemEventArgs e){if(Store.SupportedName(e.Name))ScheduleRefresh();}
+    void WatchFolder(){
+      if(inventoryWatch.EnableRaisingEvents && inventoryWatch.Path==store.Folder)return;
+      inventoryWatch.EnableRaisingEvents=false;
+      try{inventoryWatch.Path=store.Folder;inventoryWatch.EnableRaisingEvents=true;}
+      catch(IOException){} catch(UnauthorizedAccessException){} catch(ArgumentException){}
     }
     async Task Start(){
       var env=await CoreWebView2Environment.CreateAsync(null,profile,null);
@@ -55,6 +78,7 @@ namespace OnePageBI {
         System.Threading.Thread.CurrentThread.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo(store.Language);
         Text="One Page BI · "+L("Report workbench","报表合成台");
         object result=Dispatch((string)d["method"],d);
+        WatchFolder();
         core.PostWebMessageAsJson(store.Json.Serialize(new {id=id,ok=true,result=result}));
       }catch(Exception ex){
         var known=ex as DesktopError;
@@ -75,18 +99,20 @@ namespace OnePageBI {
             if(dlg.ShowDialog(this)==DialogResult.OK)store.Folder=dlg.SelectedPath;
           }return store.Inventory();
         case "selectFile":
-          using(var dlg=new OpenFileDialog {Title=L("Choose sales data","选择销售明细"),Filter=L("Sales data","销售数据")+" (*.csv;*.xlsx)|*.csv;*.xlsx",InitialDirectory=store.Folder}){
+          using(var dlg=new OpenFileDialog {Title=L("Choose data file","选择数据文件"),Filter=L("Data files","数据文件")+" (*.csv;*.xlsx)|*.csv;*.xlsx",InitialDirectory=store.Folder}){
             if(dlg.ShowDialog(this)!=DialogResult.OK)return null;
             store.Folder=Path.GetDirectoryName(dlg.FileName);return store.Load(Path.GetFileName(dlg.FileName));
           }
         case "load":return store.Load((string)d["name"]);
+        case "putOnDesktop":return store.PutOnDesktop((string)d["archiveId"]);
+        case "inventoryReport":Open(store.InventoryReport((string)d["name"]));return true;
         case "archive":return store.Archive(d);
         case "history":return store.History();
         case "report":Open(store.ItemPath((string)d["archiveId"],@"dashboard\report.html"));return true;
         case "archiveFolder":Open(store.ItemPath((string)d["archiveId"],""));return true;
         case "exportPng":
           var png=store.ItemPath((string)d["archiveId"],@"exports\report.png");
-          using(var dlg=new SaveFileDialog {Title=L("Export PNG","导出 PNG"),Filter=L("PNG image","PNG 图像")+"|*.png",FileName=L("Sales-report.png","销售分析.png"),DefaultExt="png",AddExtension=true}){
+          using(var dlg=new SaveFileDialog {Title=L("Export PNG","导出 PNG"),Filter=L("PNG image","PNG 图像")+"|*.png",FileName=L("OnePageBI-report.png","一页报表.png"),DefaultExt="png",AddExtension=true}){
             if(dlg.ShowDialog(this)!=DialogResult.OK)return false;
             string target=Path.GetFullPath(dlg.FileName);
             if(!d.ContainsKey("png") && String.Equals(target,Path.GetFullPath(png),StringComparison.OrdinalIgnoreCase))return true;

@@ -33,18 +33,33 @@ namespace OnePageBI {
       if(profile!=null) Directory.CreateDirectory(Desktop);
       Folder=Desktop;
     }
-    static bool Allowed(FileInfo f) {
-      return (f.Extension.Equals(".csv",StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".xlsx",StringComparison.OrdinalIgnoreCase))
-        && !f.Name.StartsWith("~$") && (f.Attributes & (FileAttributes.Hidden|FileAttributes.System|FileAttributes.ReparsePoint))==0;
+    internal const string ReportSuffix=".onepagebi.html";
+    static bool IsReport(string name){
+      return name.Length>ReportSuffix.Length && name.EndsWith(ReportSuffix,StringComparison.OrdinalIgnoreCase);
     }
+    internal static bool SupportedName(string name){
+      return !String.IsNullOrEmpty(name) && !name.StartsWith("~$") &&
+        (IsReport(name) || name.EndsWith(".csv",StringComparison.OrdinalIgnoreCase) || name.EndsWith(".xlsx",StringComparison.OrdinalIgnoreCase));
+    }
+    static bool Allowed(FileInfo f){
+      return SupportedName(f.Name) && (f.Attributes & (FileAttributes.Hidden|FileAttributes.System|FileAttributes.ReparsePoint))==0;
+    }
+    FileInfo InventoryItem(string name,bool report){
+      if(String.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars())>=0 || name!=Path.GetFileName(name) || name.TrimEnd(' ','.')!=name)
+        throw new DesktopError("Invalid file name.","文件名无效。");
+      var file=new FileInfo(Path.Combine(Folder,name));
+      if(!file.Exists || !Allowed(file) || IsReport(name)!=report)
+        throw new DesktopError("File moved or unsupported. Refresh the inventory.","文件已移动或格式不受支持，请刷新。");
+      return file;
+    }
+    internal string InventoryReport(string name){return InventoryItem(name,true).FullName;}
     internal object Inventory() {
       return new {folder=Folder,isExamples=String.Equals(Folder,Examples,StringComparison.OrdinalIgnoreCase),files=new DirectoryInfo(Folder).EnumerateFiles().Where(Allowed)
-        .OrderByDescending(f=>f.LastWriteTimeUtc).Select(f=>new {name=f.Name,size=f.Length,modified=f.LastWriteTimeUtc.ToString("o")}).ToArray()};
+        .OrderByDescending(f=>f.LastWriteTimeUtc).ThenBy(f=>f.Name,StringComparer.OrdinalIgnoreCase)
+        .Select(f=>new {name=f.Name,kind=IsReport(f.Name)?"report":"data",size=f.Length,modified=f.LastWriteTimeUtc.ToString("o")}).ToArray()};
     }
     internal object Load(string name) {
-      if(Path.GetFileName(name)!=name) throw new DesktopError("Invalid file name.","文件名无效。");
-      var file=new FileInfo(Path.Combine(Folder,name));
-      if(!file.Exists || !Allowed(file)) throw new DesktopError("File moved or unsupported. Refresh the inventory.","文件已移动或格式不受支持，请刷新。");
+      var file=InventoryItem(name,false);
       byte[] input;
       using(var s=new FileStream(file.FullName,FileMode.Open,FileAccess.Read,FileShare.Read)){
         if(s.Length>MaxInput)throw new DesktopError("The file exceeds the 5 MiB limit.","文件超过 5 MiB 上限。");
@@ -73,7 +88,7 @@ namespace OnePageBI {
         File.WriteAllText(Path.Combine(stage,"template.json"),(string)d["template"],Utf8);
         byte[] png=ReadPng((string)d["png"]);
         File.WriteAllBytes(Path.Combine(stage,"exports","report.png"),png);
-        var meta=new {id=id,created=(string)d["created"],source=SourceName,sha256=Hash,rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],appVersion="0.1.1",language=Language,schemaVersion=1};
+        var meta=new {id=id,created=(string)d["created"],source=SourceName,sha256=Hash,rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=(string)d["recipe"],appVersion="0.2.0",language=Language,schemaVersion=1};
         File.WriteAllText(Path.Combine(stage,"metadata.json"),Json.Serialize(meta),Utf8);
         Directory.Move(stage,dest);
       } finally {if(Directory.Exists(stage)) Directory.Delete(stage,true);}
@@ -90,6 +105,39 @@ namespace OnePageBI {
       string root=Path.Combine(Reports,valid.ToString("N"));
       if(!File.Exists(Path.Combine(root,"metadata.json")))throw new DesktopError("Archive record not found.","找不到该次生成记录。");
       return Path.Combine(root,file);
+    }
+    internal object PutOnDesktop(string id){
+      string html=ItemPath(id,@"dashboard\report.html");
+      var meta=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(ItemPath(id,"metadata.json")));
+      string recipe=Convert.ToString(meta.ContainsKey("recipe")?meta["recipe"]:"sales");
+      if(recipe!="sales" && recipe!="orders" && recipe!="cashflow") throw new DesktopError("Unknown recipe.","无法识别配方。");
+      string source=Path.GetFileNameWithoutExtension((string)meta["source"]);
+      string shortName=new string(source.Where(c=>Array.IndexOf(Path.GetInvalidFileNameChars(),c)<0).Take(42).ToArray()).TrimEnd(' ','.');
+      if(shortName.Length>0 && Char.IsHighSurrogate(shortName[shortName.Length-1]))shortName=shortName.Substring(0,shortName.Length-1);
+      string stem="BI-"+recipe+"-"+shortName+"-"+id.Substring(0,8);
+      string staged=Path.Combine(Desktop,".onepagebi-"+Guid.NewGuid().ToString("N")+".tmp");
+      try {
+        File.Copy(html,staged);
+        byte[] digest;
+        using(var hash=SHA256.Create())using(var input=File.OpenRead(staged))digest=hash.ComputeHash(input);
+        long length=new FileInfo(staged).Length;
+        for(int i=1;i<=1000;i++){
+          string name=stem+(i==1?"":" ("+i+")")+ReportSuffix;
+          string target=Path.Combine(Desktop,name);
+          try { File.Move(staged,target); }
+          catch(IOException){
+            if(Directory.Exists(target))continue;
+            var existing=new FileInfo(target);
+            if(!existing.Exists)throw;
+            if(!Allowed(existing) || existing.Length!=length)continue;
+            using(var hash=SHA256.Create())using(var input=File.OpenRead(target))
+              if(!hash.ComputeHash(input).SequenceEqual(digest))continue;
+          }
+          Folder=Desktop;
+          return new {name=name,inventory=Inventory()};
+        }
+        throw new DesktopError("Too many files share this report name.","同名报表过多，请整理后重试。");
+      } finally {if(File.Exists(staged))File.Delete(staged);}
     }
     internal object History(){
       var list=new List<Dictionary<string,object>>();int skipped=0;

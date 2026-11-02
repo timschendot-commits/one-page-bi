@@ -1,7 +1,14 @@
+import type { RecipeId } from "./recipes";
 import { errorText, translator, LocalizedError, type Message } from "./i18n";
 import { parse } from "csv-parse/browser/esm/sync";
 import * as XLSX from "xlsx";
-import { fields, suggest, type Mapping, type Sale, type Report } from "./model";
+import {
+  fieldsFor,
+  suggest,
+  type Mapping,
+  type Sale,
+  type Report,
+} from "./model";
 type Cell = string | XLSX.CellObject | undefined;
 type Line = { n: number; cells: Cell[] };
 export interface Table {
@@ -200,8 +207,10 @@ export function validate(
   map: Mapping,
   name: string,
   unit: string,
+  recipe: RecipeId = "sales",
 ): Report {
-  for (const f of fields) {
+  const activeFields = fieldsFor(recipe);
+  for (const f of activeFields) {
     const i = map[f.key];
     if (i === null) {
       if (f.required)
@@ -213,10 +222,11 @@ export function validate(
     } else if (!Number.isInteger(i) || i < 0 || i >= t.headers.length)
       fail("The mapped column does not exist.");
   }
-  const used = Object.values(map).filter((i) => i !== null);
+  const used = activeFields.map((f) => map[f.key]).filter((i) => i !== null);
+  const orderColumn = recipe === "cashflow" ? null : map.order;
   if (new Set(used).size !== used.length)
     fail("A column cannot be used for more than one field.");
-  if (suggest(t.headers).currency !== null && map.currency === null)
+  if (suggest(t.headers, recipe).currency !== null && map.currency === null)
     fail("Map the detected currency column to check for mixed currencies.");
   const rows: Sale[] = [],
     errors: { row: number; field: Message; detail: unknown }[] = [];
@@ -224,16 +234,17 @@ export function validate(
     detected: string | undefined,
     errorCount = 0;
   for (const { n, cells } of t.lines) {
-    let field: Message = "Sales date";
+    let field: Message =
+      recipe === "cashflow" ? "Transaction date" : "Sales date";
     try {
       const date = dateValue(cells[map.date!], t.date1904);
-      field = "Line amount";
+      field = recipe === "cashflow" ? "Signed amount" : "Line amount";
       const amount = cents(cells[map.amount!]);
       field = "Order ID";
-      let order = map.order === null ? null : raw(cells[map.order]);
+      let order = orderColumn === null ? null : raw(cells[orderColumn]);
       if (order === "") fail("Mapped order IDs cannot be blank.");
-      if (map.order !== null) {
-        const c = cells[map.order];
+      if (orderColumn !== null) {
+        const c = cells[orderColumn];
         if (typeof c === "object" && c.t === "n") {
           if (
             !Number.isSafeInteger(c.v) ||
@@ -244,7 +255,7 @@ export function validate(
           order = c.w ?? String(c.v);
         }
       }
-      field = "Sales category";
+      field = recipe === "cashflow" ? "Category" : "Sales category";
       const category =
         map.category === null ? null : raw(cells[map.category]) || null;
       field = "Currency code";
@@ -293,12 +304,13 @@ export function validate(
       currency: detected,
     });
   return {
+    recipe,
     name,
     sheet: t.sheet,
     created: new Date().toISOString(),
     unit: detected ?? unit,
     rows,
-    hasOrders: map.order !== null,
+    hasOrders: orderColumn !== null,
     hasCategories: map.category !== null,
   };
 }
