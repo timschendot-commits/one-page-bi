@@ -2,6 +2,8 @@
 
 English · [简体中文](README.zh-CN.md)
 
+**This project was built collaboratively with AI through vibe coding. I created the overall design and project structure, with AI assisting in code implementation, troubleshooting and test verification.**
+
 I started One Page BI with a simple idea. Many small businesses already have plenty of data scattered across Excel files, sales records and payment logs. The hard part is that every time someone wants to understand how the business is doing, they have to find the files, organize the tables, check the numbers and build a report they can actually read.
 
 I want that process to feel as natural as using a crafting table in a game. Put in the materials you have, see what you can make, choose a report and get a clear, single-page result. Files go into an inventory like items, and finished reports are easy to find again. People should be able to see what to do next without learning a long list of technical terms first.
