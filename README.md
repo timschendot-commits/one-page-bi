@@ -2,6 +2,14 @@
 
 English · [简体中文](README.zh-CN.md)
 
+I started One Page BI with a simple idea. Many small businesses already have plenty of data scattered across Excel files, sales records and payment logs. The hard part is that every time someone wants to understand how the business is doing, they have to find the files, organize the tables, check the numbers and build a report they can actually read.
+
+I want that process to feel as natural as using a crafting table in a game. Put in the materials you have, see what you can make, choose a report and get a clear, single-page result. Files go into an inventory like items, and finished reports are easy to find again. People should be able to see what to do next without learning a long list of technical terms first.
+
+To me, simplicity means doing the complicated work carefully so that using the software feels straightforward. Every sentence and button should save the user a moment of figuring things out. Charts should help people see changes, gaps and problems, letting the data speak for itself. When data is missing or its meaning is unclear, the software should say so. The numbers it produces should stand up to checking.
+
+I picture it as a small window you can open beside your work to answer today's questions. When you need to go deeper, you should be able to inspect the original data, review how it was prepared and take the results into more advanced analysis tools. I want it to feel light, work reliably and help ordinary people put their own data to use.
+
 [Download for Windows x64](https://github.com/timschendot-commits/one-page-bi/releases/download/v0.7.0/OnePageBI-V0.7.0-Windows-x64.zip). Extract the ZIP and run **OnePageBI.exe**.
 
 ## Executive view, catalog and desktop
