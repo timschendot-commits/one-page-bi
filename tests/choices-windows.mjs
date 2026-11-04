@@ -46,7 +46,7 @@ export async function exerciseChoices(page, release, profile, out) {
   }
   await click("Recipe catalog");
   await dialog.getByRole("searchbox").fill("欠我");
-  assert.equal(await dialog.locator(".recipe-choices button").count(), 1);
+  assert.equal(await dialog.locator(".recipe-pick").count(), 1);
   await dialog.press("Escape");
   await page
     .locator(".pool-item")

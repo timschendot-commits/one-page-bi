@@ -31,7 +31,9 @@ export function businessDashboard(
   ];
   const totalClass = (k: string) =>
     rows.reduce((s, r) => s + (r.accountClass === k ? r.cents : 0), 0);
-  if (id === "reorder") {
+  if(id==="customerShare"||id==="supplierShare"){const proportion=(n:number)=>m.total>0&&groups.every(([,v])=>v>=0)?(100*n/m.total).toFixed(1)+"%":"—";add("Largest share",proportion(groups[0]?.[1]??0));add("Top three share",proportion(groups.slice(0,3).reduce((n,v)=>n+v[1],0)));add(business[id].amount,fmt(m.total));add("Groups",String(groups.length));}
+  else if(id==="stockValue"){add("Carrying value",fmt(m.total));add("Locations",String(groups.length));add("SKUs",String(new Set(rows.map(x=>x.order)).size));add("Rows",String(rows.length));const skus=new Map<string,number>();for(const r of rows)skus.set(r.order!,r.cents+(skus.get(r.order!)??0));panels[0]=panel("Value by location",groups.slice(0,6),"Available in this view");panels[1]=panel("SKUs",[...skus].sort((a,b)=>b[1]-a[1]).slice(0,6),"Six largest groups");}
+  else if (id === "reorder") {
     const low = rows.filter((r) => r.cents > 0);
     add("Suggested quantity", fmt(m.total));
     add("Items to replenish", String(low.length));

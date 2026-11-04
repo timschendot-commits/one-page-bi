@@ -1,5 +1,5 @@
 import { materialCsv } from "./replay";
-import { useState } from "react";
+import { useMemo,useState } from "react";
 import { Modal } from "./Modal";
 import { useLanguage } from "./language";
 import { errorText } from "./i18n";
@@ -7,7 +7,7 @@ import { tableCSV, issueText } from "./stage";
 import { call } from "./bridge";
 import { cellLabel, sourceHeader } from "./input";
 import {
-  getSheet,
+  getSheet,matches,
   layout,
   materialHint,
   useNames,
@@ -56,6 +56,7 @@ export function MaterialEditor({
     setMode("auto");
     setCustom(null);
   }
+  const likely=useMemo(()=>view?.table?[...new Set(matches([{...m,views:[{...view,manual:undefined}]}]).flatMap(c=>c.parts.map(p=>p.layout.use)))]:[],[m,view]);
   function changeUse(use: Use | "auto") {
     setMode(use);
     setCustom(use === "auto" || !view?.table ? null : layout(view.table, use));
@@ -74,11 +75,12 @@ export function MaterialEditor({
                   onChange={(e) => changeUse(e.target.value as Use | "auto")}
                 >
                   <option value="auto">{t("Detect from columns")}</option>
-                  {(Object.keys(useNames) as Use[]).map((u) => (
+                  {likely.length>0&&<optgroup label={t("Matched fields")}>{likely.map(u=><option key={u} value={u}>{t(useNames[u])}</option>)}</optgroup>}
+                  <optgroup label={t("Other uses")}>{(Object.keys(useNames) as Use[]).filter(u=>!likely.includes(u)).map((u) => (
                     <option key={u} value={u}>
                       {t(useNames[u])}
                     </option>
-                  ))}
+                  ))}</optgroup>
                 </select>
               </label>
             </>
@@ -148,7 +150,7 @@ export function MaterialEditor({
           )}
           {view.table && (
             <>
-              {!custom && <p className="help">{t(materialHint(view))}</p>}
+              {!custom && materialHint(view)!=="Choose a business meaning and map custom headers below."&&<p className="help">{t(materialHint(view))}</p>}
               {view.table.audit && (
                 <details className="audit">
                   <summary>

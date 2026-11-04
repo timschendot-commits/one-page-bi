@@ -30,7 +30,7 @@ foreach($lib in @('react','react-dom','scheduler','xlsx','csv-parse','sql.js')){
   Copy-Item -LiteralPath $license.FullName -Destination (Join-Path $licenses.FullName "$lib.txt") -Force
 }
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 /win32manifest:native\app.manifest /win32icon:native\app.ico "/out:$($release.FullName)\OnePageBI.exe" "/r:$($release.FullName)\Microsoft.Web.WebView2.Core.dll" "/r:$($release.FullName)\Microsoft.Web.WebView2.WinForms.dll" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll native\Program.cs native\Archive.cs
+& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 /win32manifest:native\app.manifest /win32icon:native\app.ico "/out:$($release.FullName)\OnePageBI.exe" "/r:$($release.FullName)\Microsoft.Web.WebView2.Core.dll" "/r:$($release.FullName)\Microsoft.Web.WebView2.WinForms.dll" /r:System.Xml.Linq.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll native\Program.cs native\Archive.cs native\Shell.cs native\Editions.cs
 if($LASTEXITCODE -ne 0){throw 'Desktop compilation failed.'}
 $ui=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'ui')
 $examples=New-Item -ItemType Directory -Force -Path (Join-Path $release.FullName 'examples')

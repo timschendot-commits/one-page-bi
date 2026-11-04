@@ -157,7 +157,7 @@ namespace OnePageBI {
         File.WriteAllText(Path.Combine(stage,"template.json"),(string)d["template"],Utf8);
         byte[] png=ReadPng((string)d["png"]);
         File.WriteAllBytes(Path.Combine(stage,"exports","report.png"),png);
-        var meta=new {id=id,created=(string)d["created"],source=first.Name,sha256=first.Hash,sources=copies.Select(c=>new {role=c.Role,name=c.Name,sha256=c.Hash}).ToArray(),rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=recipe,appVersion="0.6.0",language=Language,schemaVersion=1};
+        var meta=new {id=id,created=(string)d["created"],source=first.Name,sha256=first.Hash,sources=copies.Select(c=>new {role=c.Role,name=c.Name,sha256=c.Hash}).ToArray(),rows=Convert.ToInt32(d["rows"]),sheet=(string)d["sheet"],recipe=recipe,appVersion="0.7.0",language=Language,schemaVersion=1};
         File.WriteAllText(Path.Combine(stage,"metadata.json"),Json.Serialize(meta),Utf8);
         var hashes=new Dictionary<string,string>();
         foreach(var file in Directory.GetFiles(stage,"*",SearchOption.AllDirectories))hashes[file.Substring(stage.Length+1).Replace('\\','/')]=FileHash(file);
@@ -208,7 +208,7 @@ namespace OnePageBI {
       string html=ItemPath(id,@"dashboard\report.html");
       var meta=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(ItemPath(id,"metadata.json")));
       string recipe=Convert.ToString(meta.ContainsKey("recipe")?meta["recipe"]:"sales");
-      if(!new[]{"sales","orders","cashflow","payout","purchase","expense","customer","product","channel","store","project","margin","stock","ar","ap","journal","trial","income","position","budget","workcost","reorder","pipeline","repeat"}.Contains(recipe)) throw new DesktopError("Unknown recipe.","无法识别配方。");
+      if(!new[]{"sales","orders","cashflow","payout","purchase","expense","customer","product","channel","store","project","margin","stock","ar","ap","journal","trial","income","position","budget","workcost","stockValue","customerShare","supplierShare","reorder","pipeline","repeat"}.Contains(recipe)) throw new DesktopError("Unknown recipe.","无法识别配方。");
       string source=Path.GetFileNameWithoutExtension((string)meta["source"]);
       string shortName=new string(source.Where(c=>Array.IndexOf(Path.GetInvalidFileNameChars(),c)<0).Take(42).ToArray()).TrimEnd(' ','.');
       if(shortName.Length>0 && Char.IsHighSurrogate(shortName[shortName.Length-1]))shortName=shortName.Substring(0,shortName.Length-1);
@@ -245,7 +245,7 @@ namespace OnePageBI {
         try{
           var meta=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(folder,"metadata.json")));
           if((string)meta["id"]!=id.ToString("N") || !meta.ContainsKey("source") || !meta.ContainsKey("created"))throw new InvalidDataException();
-          list.Add(meta);
+          meta["editable"]=File.Exists(Path.Combine(folder,"checksums.json"));list.Add(meta);
         }catch(Exception){skipped++;}
       }
       return new {items=list.OrderByDescending(m=>(string)m["created"]).ToArray(),skipped=skipped,folder=Reports};

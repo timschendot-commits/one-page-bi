@@ -56,6 +56,7 @@ export function InventoryPanel({
       : location;
   return (
     <section
+      onKeyDown={e=>{if(e.key==="Escape"&&selected.length){e.stopPropagation();setPicked([]);setAnchor("");}}}
       className={"inventory" + (over ? " accepting" : "")}
       aria-label={t("File inventory")}
       onDragOver={(e) => {
@@ -204,6 +205,7 @@ export function InventoryPanel({
         })}
       </div>
       <div className="bagfoot">
+        {onBatch&&selected.length>0&&<button className="cancel-choice" onClick={()=>{setPicked([]);setAnchor("")}}>× {t("Cancel choice")}</button>}
         {onBatch && selected.length > 0 && (
           <button
             className="textbtn"

@@ -84,6 +84,7 @@ export interface History {
     id: string;
     recipe?: import("./recipes").RecipeId | "payout";
     source: string;
+    editable?:boolean;
     created: string;
     rows: number;
     sheet: string;

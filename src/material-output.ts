@@ -57,7 +57,7 @@ export async function archiveChoice(
     ),
   }));
   const template = {
-    appVersion: "0.6.0",
+    appVersion: "0.7.0",
     template: choice.kind,
     version: 2,
     language,

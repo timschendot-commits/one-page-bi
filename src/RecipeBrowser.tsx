@@ -1,52 +1,6 @@
-import { useState } from "react";
-import { categories, questionFor } from "./questions";
-import { kindTitles, type Kind } from "./materials";
-import { translator } from "./i18n";
-import { useLanguage } from "./language";
-export function RecipeBrowser({ choose }: { choose: (k: Kind) => void }) {
-  const { t, language } = useLanguage(),
-    [query, setQuery] = useState(""),
-    other = translator(language === "en" ? "zh-CN" : "en");
-  const terms = query.trim().toLowerCase().split(/\s+/);
-  const sections = categories
-    .map((c) => ({
-      ...c,
-      ids: c.ids.filter((k) => {
-        const text = [kindTitles[k], questionFor[k], c.title]
-          .flatMap((s) => [t(s), other(s)])
-          .join(" ")
-          .toLowerCase();
-        return terms.every((q) => text.includes(q));
-      }),
-    }))
-    .filter((c) => c.ids.length);
-  return (
-    <div className="recipe-browser">
-      <label>
-        {t("Browse by business question")}
-        <input
-          autoFocus
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("Find a report")}
-          aria-label={t("Find a report")}
-        />
-      </label>
-      {sections.map((g) => (
-        <section key={g.title}>
-          <h3>{t(g.title)}</h3>
-          <div className="recipe-choices">
-            {g.ids.map((k) => (
-              <button key={k} onClick={() => choose(k)}>
-                <b>{t(questionFor[k])}</b>
-                <small>{t(kindTitles[k])}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      ))}
-      {!sections.length && <p>{t("No reports found")}</p>}
-    </div>
-  );
+import {useState} from "react";import {categories} from "./questions";import {kindTitles,type Kind} from "./materials";import {rankedRecipes,common,type Prefs} from "./preferences";import {useLanguage} from "./language";
+export function RecipeBrowser({choose,prefs,toggle}:{choose:(k:Kind)=>void;prefs:Prefs;toggle:(k:Kind)=>void}){
+ const {t}=useLanguage(),[query,setQuery]=useState("");const ranked=rankedRecipes(query,prefs),seen=new Set<Kind>();
+ const section=(title:string,ids:Kind[])=>{const group=ids.filter(k=>!seen.has(k));group.forEach(k=>seen.add(k));return group.length?<section key={title}><h3>{title}</h3><div className="recipe-choices">{group.map(k=><div className="recipe-row" key={k}><button className="recipe-pick" onClick={()=>choose(k)}>{t(kindTitles[k])}</button><button className="star" aria-label={t(prefs.stars.includes(k)?"Unfavorite":"Favorite")+" · "+t(kindTitles[k])} aria-pressed={prefs.stars.includes(k)} onClick={()=>toggle(k)}>{prefs.stars.includes(k)?"★":"☆"}</button></div>)}</div></section>:null;};
+ return <div className="recipe-browser"><input autoFocus type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder={t("Search a need")} aria-label={t("Find a report")}/>{query.trim()?section(t("Matches"),ranked):<>{section(t("Favorites"),ranked.filter(k=>prefs.stars.includes(k)))}{section(t("Frequently used"),ranked.filter(k=>!prefs.stars.includes(k)&&(common.includes(k)||(prefs.uses[k]??0)>0)).slice(0,6))}{categories.map(c=>section(t(c.title),ranked.filter(k=>c.ids.includes(k))))}</>}{!ranked.length&&<p>{t("No reports found")}</p>}</div>
 }

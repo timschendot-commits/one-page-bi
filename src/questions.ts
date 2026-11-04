@@ -1,6 +1,7 @@
 import type { Kind, Use } from "./materials";
 import type { Message } from "./i18n";
 export const questionFor: Record<Kind, Message> = {
+ customerShare:"How concentrated are our sales?",supplierShare:"How concentrated is purchasing?",stockValue:"How much money is tied up in stock?",
   sales: "How much did we sell?",
   orders: "How many orders did we get?",
   cashflow: "What came in and what went out?",
@@ -33,7 +34,7 @@ export const categories: { title: Message; ids: Kind[] }[] = [
       "sales",
       "orders",
       "product",
-      "customer",
+      "customer","customerShare",
       "repeat",
       "channel",
       "store",
@@ -54,7 +55,7 @@ export const categories: { title: Message; ids: Kind[] }[] = [
       "position",
     ],
   },
-  { title: "Purchasing & stock", ids: ["purchase", "stock", "reorder"] },
+  { title: "Purchasing & stock", ids: ["purchase","supplierShare", "stock","stockValue", "reorder"] },
   {
     title: "Projects & costs",
     ids: ["expense", "budget", "project", "workcost"],

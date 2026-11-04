@@ -1,0 +1,17 @@
+import {kinds,type Kind,kindTitles} from "./materials";import {categories,questionFor} from "./questions";import {translator} from "./i18n";
+export interface Prefs{stars:Kind[];uses:Partial<Record<Kind,number>>}
+const key="onepagebi.catalog.v1";export function readPrefs():Prefs{try{const v=JSON.parse(localStorage.getItem(key)??"{}");return {stars:kinds.filter(k=>Array.isArray(v.stars)&&v.stars.includes(k)),uses:Object.fromEntries(kinds.filter(k=>Number.isSafeInteger(v.uses?.[k])&&v.uses[k]>0).map(k=>[k,v.uses[k]]))};}catch{return {stars:[],uses:{}}}}
+export function savePrefs(p:Prefs){try{localStorage.setItem(key,JSON.stringify(p));}catch{}}
+export const common:Kind[]=["sales","orders","cashflow","ar","margin","stock"];const synonyms:Partial<Record<Kind,string[]>>={
+ ar:["催款","催收","客户欠款","客户没付款","客户没有付款","谁没给钱","逾期客户","collect","unpaid customers","overdue invoices","未回款","拖欠货款的客户","没有回款","debtors"],
+ ap:["欠供应商","要付给谁","供应商催款","供应商欠款","unpaid bills","unpaid supplier invoices","unpaid vendors","vendor bills","供货商没付款","未付货款","pay vendors","creditors"],sales:["营业额","流水销售","销售总额","卖了多少","revenue","turnover"],orders:["客单价","每单","订单量","average basket","ticket size","order count"],
+ cashflow:["现金流","进账出账","钱进钱出","收付款","cash in","cash out","money in"],margin:["赚了多少","毛利率","利润率","gross margin","profitability"],payout:["平台少打","打款差额","对账","到账","settlement","reconcile"],
+ reorder:["补货","断货","缺货","要进多少货","库存不足","stockout","restock","replenish"],stock:["盘点","库存余量","还有多少货","stock level","stocktake"],repeat:["回头客","老客户","二次购买","买过两次","repeat buyers","returning customers"],
+ pipeline:["赢单","跟单","商机","漏斗","opportunities","weighted deals"],budget:["超支","超预算","花超了","overspend","overspent","over budget"],expense:["报销","费用分类","spending","expenses"],
+ customer:["大客户","客户排名","best buyers"],product:["畅销","爆款","best sellers","bestsellers"],channel:["渠道比较","平台排名"],store:["门店业绩","分店"],purchase:["进货","采购支出"],project:["项目开票","开票进度"],workcost:["工单成本","制造成本"],trial:["试算平衡","借贷平不平"],position:["资产负债表"],journal:["科目流水","分录"],income:["损益","利润表"],customerShare:["客户依赖","客户集中度","customer concentration"],supplierShare:["供应商依赖","供应商集中度","supplier concentration"],stockValue:["库存占用资金","存货价值","库存压了多少钱","压了多少钱","inventory value"]};
+const norm=(s:string)=>s.normalize("NFKC").toLowerCase().replace(/[?？!！。，,]/g," ").trim();
+export function rankedRecipes(input:string,p:Prefs){const q=norm(input),terms=q.split(/\s+/).filter(x=>x.length>1&&!["the","to","is","we","our","are","do","what","which","how","can","need","for","show","me"].includes(x)),zh=translator("zh-CN");
+ return kinds.map((k,i)=>{const phrases=[kindTitles[k],zh(kindTitles[k]),questionFor[k],zh(questionFor[k]),...(synonyms[k]??[])].map(norm);
+ let score=0;for(const phrase of phrases){if(!q)break;if(q===phrase)score=Math.max(score,120);else if(phrase.includes(q))score=Math.max(score,80);else if(q.includes(phrase))score=Math.max(score,52+Math.min(phrase.length,20));else{const tokens=terms.filter(t=>phrase.split(/\s+/).includes(t));if(tokens.length)score=Math.max(score,15*tokens.length);const grams=new Set(q.match(/[\u3400-\u9fff]+/g)?.flatMap(w=>Array.from({length:w.length-1},(_,j)=>w.slice(j,j+2)))??[]);const n=[...grams].filter(g=>phrase.includes(g)).length;if(n>=2)score=Math.max(score,Math.min(n*6,42));}}
+ return {k,i,score,star:Number(p.stars.includes(k)),use:p.uses[k]??0,common:common.includes(k)?common.length-common.indexOf(k):0};}).filter(v=>!q||v.score>0).sort((a,b)=>b.score-a.score||b.star-a.star||b.use-a.use||b.common-a.common||a.i-b.i).map(v=>v.k);
+}

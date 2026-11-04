@@ -71,7 +71,8 @@ export function paint(
     true,
   );
   label(t(recipe.title), 44, 118, 49, ink, true);
-  label("ONE PAGE     /     01", 885, 109, 18, muted, true, 275);
+  const dates=rows.map(v=>v.date).sort();
+  label([dates[0],dates.at(-1)].filter((v,i,a)=>v && a.indexOf(v)===i).join(" – "),800,105,19,muted,false,340);
   label(
     selection +
       "   ·   " +
@@ -122,6 +123,13 @@ export function paint(
       left = x + 160,
       graph = 207,
       axis = left + (graph * -min) / span;
+    if(items.length>1&&[t("Monthly amount"),t("Monthly sales"),t("Orders by month"),t("Monthly net movement")].includes(title)&&items.every(([s])=>/^\d{4}-\d{2}$/.test(s))){
+       const months=items.map(([s])=>+s.slice(0,4)*12+(+s.slice(5,7))),first=months[0],last=months[months.length-1];
+       const px=(i:number)=>x+55+(last===first?215:430*(months[i]-first)/(last-first)),py=(v:number)=>585-(v-min)/span*132;
+       rect(x+38,py(0),468,2,border);g!.lineWidth=4;g!.strokeStyle=color;
+       items.forEach(([name,v],i)=>{if(i&&months[i]-months[i-1]===1){g!.beginPath();g!.moveTo(px(i-1),py(items[i-1][1]));g!.lineTo(px(i),py(v));g!.stroke();}g!.beginPath();g!.fillStyle=color;g!.arc(px(i),py(v),5,0,2*Math.PI);g!.fill();const tx=Math.max(x+11,Math.min(x+464,px(i)-30));label(count?String(v):money(v,language),tx,py(v)-12,16,ink,true,78);label(name,tx,620,15,muted,false,80);});
+       return;
+    }
     items.forEach(([name, value], i) => {
       const y = 444 + i * 35;
       label(name, x + 21, y + 5, 17, ink, false, 131);

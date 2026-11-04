@@ -158,6 +158,7 @@ export function businessReport(id: Business, p: Binding, unit: string): Report {
           classes.add(accountClass);
         }
       }
+      if(id==="stockValue"){if(cutoff&&cutoff!==date)problem("Use one inventory snapshot.","库存估值只可使用一个快照。");cutoff=date;const key=JSON.stringify([category,order]);if(seen.has(key))problem("Duplicate inventory position.","库存项重复。");seen.add(key);}
       if (id === "reorder") {
         const min = cents(cell("price")),
           target = cents(cell("quantity"));
@@ -266,6 +267,7 @@ export function businessReport(id: Business, p: Binding, unit: string): Report {
       );
     }
   });
+  if(id==="customerShare"||id==="supplierShare"){const totals=new Map<string,number>();for(const r of rows)totals.set(r.category!,r.cents+(totals.get(r.category!)??0));if([...totals.values()].some(n=>n<0))problem("A party has a negative net amount. Review credits before computing shares.","存在净额为负的往来方，请先核对冲销再计算占比。");}
   for (const [key, j] of journals)
     if (j.balance !== 0)
       problem("Unbalanced journal " + key, "凭证借贷不平 " + key);

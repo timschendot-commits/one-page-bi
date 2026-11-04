@@ -1,5 +1,6 @@
 import type { Message } from "./i18n";
 export const business = {
+ customerShare:{title:"Customer concentration",material:"Customer net sales",amount:"Sales amount",dimension:"Customer"},supplierShare:{title:"Supplier concentration",material:"Supplier purchase lines",amount:"Purchase amount",dimension:"Supplier"},stockValue:{title:"Inventory carrying value",material:"Inventory values",amount:"Carrying value",dimension:"Location"},
   reorder: {
     title: "Stock replenishment",
     material: "Stock thresholds",
@@ -167,6 +168,7 @@ export function fieldSpec(id: Business): Record<string, Message> {
     category: business[id].dimension,
     currency: "Currency",
   };
+  if(id==="stockValue"){spec.date="Snapshot date";spec.order="SKU";}
   if (id === "repeat") spec.order = "Order ID";
   if (id === "pipeline") {
     spec.date = "Snapshot date";

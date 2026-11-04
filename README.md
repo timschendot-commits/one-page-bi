@@ -1,6 +1,16 @@
-# One Page BI V0.6.0 · Local Windows milestone
+# One Page BI V0.7.0 for Windows
 
 English · [简体中文](README.zh-CN.md)
+
+[Download for Windows x64](https://github.com/timschendot-commits/one-page-bi/releases/download/v0.7.0/OnePageBI-V0.7.0-Windows-x64.zip). Extract the ZIP and run **OnePageBI.exe**.
+
+## Executive view, catalog and desktop
+
+The finished sales report shows the total, order count, average order value, observed monthly trend and category ranking in the workbench. Select **Full page** to enlarge it. **Desktop copy** saves the standalone file. **Cancel choice** keeps materials on the grid. Star recipes in the catalog to place them first. Searches such as “unpaid customers” and “stockout” use bilingual local aliases and ranked matching. Frequently generated reports appear near the top. New recipes cover customer concentration, supplier concentration and inventory carrying value.
+
+Drag the brand to move the borderless window and its edges or corners to resize. The ◐ menu includes three colors, floating view, optional always-on-top and hide to tray. Double-click the Windows notification icon to restore the current session. Its context menu also opens the full workbench, switches to floating view or exits.
+
+**Professional editing** is available on the result and in checksum-backed history. The working copy includes a Power BI project with native visuals and semantic model, and a Word document with editable tables. Open **Workbench.pbip** and select **Refresh** on first open. The embedded facts require no network or source-directory configuration. Sales/order KPIs use native DAX. Other recipes include snapshot summaries and typed facts for adding measures or relationships. The initial package is a portable snapshot. Open **Executive.docx** in Word or a compatible editor. Save external edits before **Archive saved edits**. This creates a separate ZIP revision under Documents/One Page BI/Editions/<archive-id>/Revisions. **Export editing pack** saves the working files together to a location you select. Extract the whole package together. PBIX binary creation and publishing to the Power BI service are outside this release.
 
 ## Make a report in three steps
 
@@ -14,7 +24,7 @@ V0.6 fixes a Chinese label crash in recipe selection, moves full report validati
 
 Drop a CSV, TSV, XLSX or prepared BI report into the square workbench. Open the material to see the SQL result, the first source rows, the presentation rules and the suggested column types. UTF-8 and BOM-marked UTF-16 delimited files can use commas, tabs, semicolons or pipes. Files are identified by structure and values. If there are no headers, the material keeps the first row and shows numbered columns. Choose a meaning and map ambiguous columns yourself. Check the suggested start row, especially when a file contains a cover note. Excel imports retain typed date and ID information.
 
-The **Recipe catalog** contains 24 runnable report types. The four original recipes are joined by sales by customer, SKU, channel or store, purchasing by supplier, expenses, gross profit, stock on hand, receivables aging, payables aging, project billing, posted work-order cost, journal movements, trial balance roll-forward, income and expense statement, balance sheet check, and budget versus actual. Cross-period merging is also available for compatible sales materials. Sector coverage and source conventions are described in [Report rules and verification](REPORT-RULES.md).
+The **Recipe catalog** contains 27 runnable report types. The four original recipes are joined by sales by customer, SKU, channel or store, purchasing by supplier, expenses, gross profit, stock on hand, receivables aging, payables aging, project billing, posted work-order cost, journal movements, trial balance roll-forward, income and expense statement, balance sheet check, and budget versus actual. Cross-period merging is also available for compatible sales materials. Sector coverage and source conventions are described in [Report rules and verification](REPORT-RULES.md).
 
 Before crafting, safe changes include trimming whitespace, standardizing known labels, ordering fields and removing blank rows and exact repeated headers. Original row numbers and input bytes remain available. Data rows are never filled forward or silently deduplicated. Suspicious duplicates block aggregates. The payout exception report can retain duplicate rows as evidence without confirming them as receipts. Ambiguous dates, mixed entities, status issues, conflicting units and failed accounting checks require correction. Data suppliers remain responsible for completeness and business meaning.
 
@@ -26,7 +36,7 @@ Drop the files you have onto the nine-slot workbench. One Page BI inspects their
 
 ## Start and try the joined-order example
 
-1. Extract **OnePageBI-V0.6.0-local-Windows-x64.zip** and run **OnePageBI.exe**. Keep its DLLs, `ui`, `licenses` and `examples` together. Requires Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+1. Extract **OnePageBI-V0.7.0-Windows-x64.zip** and run **OnePageBI.exe**. Keep its DLLs, `ui`, `licenses` and `examples` together. Requires Windows x64, .NET Framework 4.8 and the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 2. The square inventory opens on your Desktop. Choose **Examples** from its location menu. Hold Ctrl and select **Order-headers-demo.csv**, **Order-items-demo.tsv**, **Payouts-demo.csv** and **Bank-demo.csv**. Drag the group to the grid, or choose **Add selected**. You can also drop files from Explorer, click an empty slot to browse, or click an inventory data file to load it.
 3. The right side lists possible report types, even if you previously chose a different template. Select **Order analysis**. Check which source supplies each field, then check **MYR** and select **Preview first**. Only the two order files participate. Unused materials stay on the grid for the next recipe.
 4. Click **Craft** in the output slot. The synthetic example gives **MYR 125.00**, **2** orders and **MYR 62.50** average order value. Open the interactive report, filter it, or export a PNG. Drag the finished item into the inventory (or choose **To inventory**) for a standalone Desktop copy. Choose **Change selection** to use the same materials again.
@@ -48,7 +58,7 @@ Mapping explains an input column. It uses no material slot. A date and a generic
 - Click a material to choose its worksheet, header row (1–50), business meaning and column names. Sample values are shown beside the mapping. A workbook can provide more than one participating worksheet. The first six visible sheets are inspected automatically and additional sheets can be selected in the editor.
 - The inventory lists CSV, TSV, XLSX and marked `.onepagebi.html` files. An external standalone One Page BI report can supply its embedded transaction data. Dropping that report reads its data section only. Clicking it in the inventory opens it in the browser.
 - The pool holds nine files and skips byte-identical copies. A data file can be up to 5 MiB, a marked report up to 16 MiB. Data tables support up to 10,000 rows and 80 columns. Workbook ZIP limits are 32 MiB unpacked and 2,000 entries. Use nonempty, unique column names and remove subtotal, balance and footer rows. Export formulas as values. Dates support YYYY-MM-DD, YYYY/MM/DD and supported Excel serial dates. Explicitly enable DD/MM/YYYY for that convention.
-- For order joins, use a complete set of order headers and matching lines. For derived amounts, provide the final line amount when tax, shipping, percentage discounts, or refund treatment cannot be determined by the supported formula. Input units must agree. Currency conversion, arbitrary table joins, PDF/image extraction, forecasting or statutory filing formats and Power BI PBIP/PBIX export are outside this milestone.
+- For order joins, use a complete set of order headers and matching lines. For derived amounts, provide the final line amount when tax, shipping, percentage discounts, or refund treatment cannot be determined by the supported formula. Input units must agree. Currency conversion, arbitrary table joins, PDF/image extraction, forecasting or statutory filing formats and direct PBIX binary export are outside this milestone.
 
 Many merchant exports mix order-level amounts and product rows. Shopify documents this layout and records refunded amounts at order level. When using these exports, supply verified final line amounts or a single verified net row per order. The app blocks repeated order totals and unallocated refunds in derived sales. [Shopify order export fields](https://help.shopify.com/en/manual/fulfillment/managing-orders/exporting-orders)
 

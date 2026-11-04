@@ -1,3 +1,7 @@
+import {EditReport} from "./EditReport";
+import {ExecutivePreview} from "./ExecutivePreview";
+import {executive} from "./executive";
+import {rankedRecipes,readPrefs,savePrefs} from "./preferences";
 import { cellLabel, sourceHeader } from "./input";
 import { RecipeBrowser } from "./RecipeBrowser";
 import { questionFor } from "./questions";
@@ -94,6 +98,12 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
       isExamples: false,
     }),
     [reveal, setReveal] = useState({ name: "", seq: 0 });
+  const [prefs,setPrefs]=useState(readPrefs),[pane,setPane]=useState("materials"),[editId,setEditId]=useState("");
+  const ranked=useMemo(()=>rankedRecipes("",prefs),[prefs]);
+  const toggleStar=(k:Kind)=>setPrefs(p=>{const next={...p,stars:p.stars.includes(k)?p.stars.filter(s=>s!==k):[...p.stars,k]};savePrefs(next);return next;});
+  const brief=useMemo(()=>product?executive(product,language):undefined,[product,language]);
+  const clearChoice=()=>{reset();setPreferred(null);setPane("materials");};
+  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(active&&e.key==="Escape"&&!modal&&!editId&&(selection||preferred))clearChoice();};window.addEventListener("keydown",key);return ()=>window.removeEventListener("keydown",key);},[active,modal,editId,selection,preferred]);
   const options = useMemo(() => matches(pool), [pool]),
     chosen = options.find((c) => c.id === selection),
     thumb = useMemo(
@@ -252,7 +262,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
     }
     if (added.length) {
       reset();
-      setPool((old) => [...old, ...added]);
+      setPool((old) => [...old, ...added]);setPane("reports");
     }
     if (dup) setNotice("An identical file is already on the grid.");
     setErrors(issues);
@@ -310,7 +320,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
     const r = { ...ready, created: new Date().toISOString() };
     const id = await archiveChoice(choice, r, language);
     setArchive(id);
-    setProduct(r);
+    setProduct(r);setPane("reports");setPrefs(p=>{const next={...p,uses:{...p.uses,[choice.kind]:(p.uses[choice.kind]??0)+1}};savePrefs(next);return next;});
     setNotice("Report saved. Drag it into the inventory for a desktop copy.");
   }
   async function put(id: string) {
@@ -339,26 +349,12 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
     </div>
   ) : null;
   const count = (k: Kind) => options.filter((c) => c.kind === k).length;
-  const cards = product
-    ? isSales(product)
-      ? dashboard(product, product.rows, language).cards.slice(0, 2)
-      : [
-          [
-            t("Confirmed receipts"),
-            money(payoutTotals(product.cases).confirmed, language),
-          ],
-          [t("Payout exceptions"), String(payoutTotals(product.cases).issues)],
-        ]
-    : [];
   if (!active) return null;
   return (
-    <div className="workcase" inert={busy}>
+    <div className="workcase" data-pane={pane} inert={busy}><nav className="mini-nav" aria-label={t("Mini navigation")}>{(["materials","reports","bag"] as const).map((p,i)=><button key={p} aria-pressed={pane===p} onClick={()=>setPane(p)}>{t((["Materials","Reports","Inventory"] as const)[i])}</button>)}<button aria-label={t("Recipe catalog")} onClick={()=>setModal("recipe")}>☰</button>{(chosen||preferred)&&<button aria-label={t("Change selection")} onClick={clearChoice}>×</button>}</nav>
       <aside className="library">
         <h2>{t("Templates")}</h2>
-        {kinds
-          .filter(
-            (k) => !isBusiness(k) || k === chosen?.kind || k === preferred,
-          )
+        {[...new Set([...ranked.slice(0,4),...(chosen?[chosen.kind]:preferred?[preferred]:[])])]
           .map((k) => (
             <button
               key={k}
@@ -397,7 +393,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
         </button>
       </aside>
       <section className="bench">
-        <h1>{t("Report workbench")}</h1>
+        <div className="bench-heading"><h1>{t("Report workbench")}</h1></div>
         <ol className="craft-steps">
           {(["Drop files", "Choose report", "Get report"] as const).map(
             (label, i) => (
@@ -571,29 +567,11 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
                   ? t("Click a material to review its columns.")
                   : t("Drop files here. A template is optional.")}
           </p>
-          {chosen && !product && (
-            <button className="textbtn" onClick={reset}>
-              {t("Change selection")}
-            </button>
-          )}
-          {archive && (
-            <>
-              <button
-                className="textbtn"
-                onClick={() => run(() => put(archive))}
-              >
-                {t("To inventory")}
-              </button>
-              <button className="textbtn" onClick={() => run(craft)}>
-                {t("Craft again")}
-              </button>
-            </>
-          )}
         </div>
         {!modal && feedback}
       </section>
       <section className="preview">
-        <h2>{t(product ? "Report preview" : "You can make")}</h2>
+        <div className="preview-heading"><h2>{t(product ? "Report preview" : "You can make")}</h2>{(chosen||preferred)&&<button className="cancel-choice" aria-label={t("Change selection")} onClick={clearChoice}>× {t("Cancel choice")}</button>}</div>
         {!!guide.length && preferred && (
           <div className="missing-guide">
             <b>{t(kindTitles[preferred])}</b>
@@ -621,29 +599,10 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
             ))}
           </div>
         )}
-        {product ? (
-          <>
-            <div className="displayframe">
-              <button
-                className="thumb"
-                aria-label={t("Enlarge report preview")}
-                onClick={() => setModal("preview")}
-              >
-                <img src={thumb} alt={t(kindTitles[chosen!.kind])} />
-              </button>
-            </div>
-            <div className="peek">
-              {cards.map(([k, v]) => (
-                <div key={k}>
-                  <small>{k}</small>
-                  <b>{v}</b>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : options.length ? (
+        {product && brief ? <ExecutivePreview brief={brief} expand={()=>setModal("preview")}/>
+        : options.length ? (
           <div className="candidate-list">
-            {[...kinds]
+            {[...ranked]
               .sort((a, b) => Number(b === preferred) - Number(a === preferred))
               .filter((k) => count(k))
               .map((k) => (
@@ -654,9 +613,8 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
                 >
                   <Icon kind="chart" size={22} />
                   <span>
-                    {t(questionFor[k])}
+                    {t(kindTitles[k])}
                     <small>
-                      {t(kindTitles[k])} ·{" "}
                       {count(k) === 1
                         ? options
                             .find((c) => c.kind === k)!
@@ -668,11 +626,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
                   <b aria-hidden="true">›</b>
                 </button>
               ))}
-            <small>
-              {t(
-                "Based on columns. Confirm meaning and validate all rows before crafting.",
-              )}
-            </small>
+
           </div>
         ) : (
           <div className="displayframe">
@@ -705,13 +659,8 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
             ))}
           </p>
         )}
-        {product && (
-          <button className="textbtn" onClick={reset}>
-            {t("Change selection")}
-          </button>
-        )}
         {archive && (
-          <div className="prevactions">
+          <div className="prevactions"><button className="desktop-copy" aria-label={t("To inventory")} onClick={()=>run(()=>put(archive))}>↓ {t("Desktop copy")}</button>
             <button
               onClick={() =>
                 run(async () => {
@@ -734,11 +683,12 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
                 })
               }
             >
-              {t("Save summary PNG")}
-            </button>
+              PNG
+            </button><button aria-label={t("Professional editing")} onClick={()=>setEditId(archive)}>{t("Professional editing")} ↗</button><details><summary>{t("More actions")}</summary><button onClick={()=>run(craft)}>{t("Craft again")}</button></details>
           </div>
         )}
       </section>
+      {editId&&<EditReport id={editId} close={()=>setEditId("")}/>}
       <InventoryPanel
         key={inv.folder + reveal.seq}
         inventory={inv}
@@ -851,7 +801,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
               {modal === "review" && chosen && (
                 <Modal
                   title={t(kindTitles[chosen.kind])}
-                  onClose={() => setModal("")}
+                  onClose={clearChoice}
                 >
                   <h3 className="review-question">
                     {t(questionFor[chosen.kind])}
@@ -1091,7 +1041,7 @@ export function MaterialWorkbench({ active }: { active: boolean }) {
                   onClose={() => setModal("")}
                 >
                   {modal === "recipe" ? (
-                    <RecipeBrowser
+                    <RecipeBrowser prefs={prefs} toggle={toggleStar}
                       choose={(k) => {
                         setModal("");
                         pickTemplate(k);

@@ -1,3 +1,4 @@
+import {desktop070} from "./desktop070.mjs";
 import { exerciseChoices } from "./choices-windows.mjs";
 import { payoutOffline } from "./payout-windows.mjs";
 import { chromium } from "playwright-core";
@@ -507,6 +508,7 @@ try {
   await launch();
   await exerciseChoices(page, release, profile, out);
   await closeApp();
+  await launch("zh-CN");await desktop070(page,release,profile,out,fillNativeDialog,()=>new Promise((resolve,reject)=>{const p=spawn("powershell.exe",["-NoProfile","-ExecutionPolicy","Bypass","-File","tests/restore-tray.ps1","-AppProcess",String(child.pid)],{windowsHide:true,stdio:"inherit"});p.on("error",reject);p.on("exit",n=>n===0?resolve():reject(Error("Tray activation failed "+n)));}));await closeApp();
   const edgePath =
     process.env.EDGE_PATH ||
     path.join(

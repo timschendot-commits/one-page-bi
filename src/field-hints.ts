@@ -1,6 +1,7 @@
 import { keyName } from "./model";
 // Semantic suggestions only: keep the original staged headers for historical replay.
 export const fieldHints: Record<string, string[]> = {
+ "Carrying value":["inventory carrying value","stock balance value","账面价值","库存账面价值"],
   Customer: [
     "customer_id",
     "client id",

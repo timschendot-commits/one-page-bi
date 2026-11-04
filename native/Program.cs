@@ -9,7 +9,7 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace OnePageBI {
-  internal sealed class Workbench : Form {
+  internal sealed partial class Workbench : Form {
     const string StartUrl="https://onepagebi.local/index.html";
     readonly WebView2 view=new WebView2();
     readonly Store store;
@@ -41,7 +41,7 @@ namespace OnePageBI {
         Size=new Size(Math.Min(area.Width,(int)(1390*scale)),Math.Min(area.Height,(int)(920*scale)));
         MinimumSize=new Size(Math.Min(area.Width,(int)(730*scale)),Math.Min(area.Height,(int)(560*scale)));
       }
-      StartPosition=FormStartPosition.CenterScreen;Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);view.Dock=DockStyle.Fill;Controls.Add(view);
+      StartPosition=FormStartPosition.CenterScreen;Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);ConfigureShell();view.Dock=DockStyle.Fill;Controls.Add(view);
       Shown+=async (sender,e)=>{try{await Start();}catch(Exception ex){MessageBox.Show("Unable to start One Page BI. Check the Microsoft Edge WebView2 Runtime.\n"+ex.Message,Text);Close();}};
     }
     void ScheduleRefresh(){refreshTimer.Stop();refreshTimer.Start();}
@@ -93,6 +93,11 @@ namespace OnePageBI {
     object Dispatch(string method,Dictionary<string,object> d){
       string role=d.ContainsKey("role")?(string)d["role"]:"main";
       switch(method){
+        case "editionExists":return Directory.Exists(Path.Combine(EditionRoot((string)d["archiveId"]),"Working"));
+        case "editionSource":return File.ReadAllText(store.CheckedFile((string)d["archiveId"],"dashboard/report.html"));
+        case "prepareEdition":PrepareEdition((string)d["archiveId"],d);return true;
+        case "edition":return Edition((string)d["archiveId"],(string)d["action"]);
+        case "windowAction":return WindowAction((string)d["action"]);
         case "stageMaterial":store.StageMaterial((string)d["token"],(string)d["tables"]);return true;
         case "startPool":store.StartPool();return true;
         case "materialLoad":return store.Material((string)d["name"]);
